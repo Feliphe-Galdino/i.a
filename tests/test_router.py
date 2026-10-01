@@ -112,3 +112,13 @@ def test_complexity_signals_are_explained():
     score, signals = estimate_complexity("```js\nconst x = () => 1;\n```")
     assert score >= 3
     assert "contém código" in signals
+
+
+def test_budget_hard_stop_applies_to_manual_choice():
+    decision = decide("oi", manual=Tier.DEEP, spent_today=6.0, daily_budget=5.0, budget_hard_stop=True)
+    assert decision.blocked
+
+
+def test_manual_choice_skips_soft_budget_caps():
+    decision = decide("oi", manual=Tier.DEEP, spent_today=6.0, daily_budget=5.0)
+    assert decision.model == "claude-opus-5-5" and not decision.blocked

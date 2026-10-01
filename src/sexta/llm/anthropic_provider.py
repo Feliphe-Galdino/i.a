@@ -71,6 +71,7 @@ class AnthropicProvider:
         self._client = client or anthropic.AsyncAnthropic(api_key=api_key, max_retries=2)
         self._fallback_enabled = refusal_fallback
         self._binding_enabled = True
+        self._eager_enabled = True
 
     # ------------------------------------------------------------------
     def build_params(self, req: LLMRequest, *, strip_thinking: bool = False) -> dict[str, Any]:
@@ -81,12 +82,14 @@ class AnthropicProvider:
                 "name": t.name,
                 "description": t.description,
                 "input_schema": t.input_schema,
-                # Entradas grandes (ex.: conteúdo de arquivo) chegam em streaming;
-                # o executor valida cada entrada antes de rodar a ferramenta.
-                "eager_input_streaming": True,
             }
             for t in req.tools
         ]
+        if self._eager_enabled:
+            # Entradas grandes (ex.: conteúdo de arquivo) chegam em streaming;
+            # o executor valida cada entrada antes de rodar a ferramenta.
+            for tool in tools:
+                tool["eager_input_streaming"] = True
         if req.web_search and spec.web_search_tool:
             tools.append({"type": spec.web_search_tool, "name": "web_search", "max_uses": WEB_SEARCH_MAX_USES})
 
@@ -147,6 +150,10 @@ class AnthropicProvider:
                     if ("block_binding" in lowered or "thinking-binding" in lowered) and self._binding_enabled:
                         log.warning("Controle de binding indisponível; desativando: %s", message)
                         self._binding_enabled = False
+                        continue
+                    if "eager_input_streaming" in lowered and self._eager_enabled:
+                        log.warning("Streaming antecipado de ferramentas indisponível; desativando.")
+                        self._eager_enabled = False
                         continue
                     if "signature" in lowered and "thinking" in lowered and not strip_thinking:
                         log.warning("Histórico de raciocínio inválido; reenviando sem ele.")

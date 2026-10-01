@@ -222,3 +222,11 @@ async def test_unparseable_tool_json_resets_stream():
     kinds = [type(e).__name__ for e in events]
     assert kinds == ["TextDelta", "StreamReset", "TextDelta", "Completion"]
     assert isinstance(events[1], StreamReset)
+
+
+async def test_unsupported_eager_streaming_is_disabled_and_retried():
+    error = bad_request("tools.0.eager_input_streaming: Extra inputs are not permitted")
+    client = FakeClient([FakeStream([], None, error=error), FakeStream([], final_message())])
+    await collect(AnthropicProvider("k", client=client), request("claude-haiku-4-5"))
+    assert client.calls[0]["tools"][0]["eager_input_streaming"] is True
+    assert "eager_input_streaming" not in client.calls[1]["tools"][0]

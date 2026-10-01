@@ -251,13 +251,14 @@ class Router:
                         break
 
         blocked = False
-        if daily_budget > 0 and manual is None:
-            ratio = spent_today / daily_budget
+        ratio = spent_today / daily_budget if daily_budget > 0 else 0.0
+        if ratio >= 1 and budget_hard_stop:
+            # O bloqueio rígido vale até para escolhas manuais.
+            blocked = True
+            reasons.append("orçamento diário esgotado")
+        elif daily_budget > 0 and manual is None:
             if ratio >= 1:
-                if budget_hard_stop:
-                    blocked = True
-                    reasons.append("orçamento diário esgotado")
-                elif tier != Tier.FAST:
+                if tier != Tier.FAST:
                     tier, model, effort = Tier.FAST, self.model_for(Tier.FAST, tier_overrides), None
                     reasons.append("orçamento diário esgotado: modo econômico")
             elif ratio >= 0.8 and tier == Tier.DEEP:
