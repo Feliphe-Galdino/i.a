@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Segredos e dados locais — NUNCA versionar
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
