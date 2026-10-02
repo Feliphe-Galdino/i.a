@@ -9,8 +9,9 @@ um novo registro em vez de apagar o antigo.
 ```mermaid
 flowchart LR
     subgraph Interfaces
-        UI[Interface web HUD<br/>+ voz e palmas]
-        CLI[CLI sexta<br/>open · stop · autostart]
+        UI[Interface web HUD<br/>chat · painel · mundo]
+        VOZ[Voz local<br/>microfone · palmas · Whisper · SAPI]
+        CLI[CLI sexta<br/>open · stop · autostart · voz]
         FUT[Celular<br/>fases futuras]
     end
 
@@ -19,7 +20,9 @@ flowchart LR
         ORQ[Orquestrador]
         ROT[Roteador de modelos]
         AG[Agentes]
+        SUB[Subagentes<br/>em paralelo]
         BUS[(Barramento<br/>de eventos)]
+        SCH[Agendador<br/>alertas · resumos]
     end
 
     subgraph Seguranca["Segurança"]
@@ -30,19 +33,27 @@ flowchart LR
     end
 
     subgraph Dados
-        DB[(SQLite + FTS5<br/>memórias, conversas,<br/>tarefas, custos)]
+        DB[(SQLite + FTS5<br/>memórias + vetores, conversas,<br/>tarefas, custos, cache, alertas)]
     end
 
     LLM[Provedores de IA<br/>Claude Haiku/Sonnet/Opus]
-    TOOLS[Ferramentas<br/>arquivos, terminal,<br/>processos, apps, memória]
+    TOOLS[Ferramentas<br/>arquivos, terminal, processos,<br/>memória, informações, navegador]
+    INTEL[Fontes públicas<br/>notícias · clima · mercado · BCB]
+    NAV[Navegador da IA<br/>Playwright + Edge]
 
     UI <--> API
+    VOZ --> ORQ
     CLI --> API
     FUT -.-> API
     API --> ORQ
     ORQ --> ROT --> AG
     ORQ <--> LLM
     ORQ --> TOOLS
+    TOOLS --> SUB --> TOOLS
+    TOOLS --> INTEL
+    TOOLS --> NAV
+    SCH --> INTEL
+    SCH --> ORQ
     TOOLS --> GUA --> POL --> APR
     APR <--> BUS
     ORQ --> BUS --> API
@@ -90,11 +101,14 @@ sequenceDiagram
 | Pasta | Responsabilidade | Depende de |
 |---|---|---|
 | `llm/` | Falar com modelos de IA; catálogo de capacidades e preços | — |
-| `memory/` | Banco SQLite, migrações, memórias, conversas | — |
+| `memory/` | Banco SQLite, migrações, memórias (BM25 + vetores), conversas | — |
 | `security/` | Permissões, guardas, aprovações, auditoria | `memory/db` |
-| `tools/` | Ações concretas (arquivos, terminal, memória…) | `security`, `memory` |
-| `agents/` | Perfis especializados e seleção | `llm/catalog` |
+| `intel/` | Notícias, clima, mercado, indicadores, cache, alertas, resumos, agendador | `memory/db` |
+| `browser/` | Navegador da IA (thread dedicada), guardas de rede, `web_fetch` | `security` |
+| `tools/` | Ações concretas (arquivos, terminal, memória, informações, navegador, delegação) | `security`, `memory`, `intel`, `browser` |
+| `agents/` | Perfis especializados, seleção e delegação a subagentes | `llm/catalog`, `core/prompts` |
 | `core/` | Roteador, orquestrador, prompts, eventos, tarefas, custos | todos acima |
+| `voice/` | Voz local: áudio, DSP, ativação, transcrição, fala, máquina de estados | `core` (via orquestrador) |
 | `api/` + `app.py` | HTTP/WebSocket, autenticação, interface | `core` |
 | `container.py` | Monta tudo (único lugar que conhece todas as peças) | todos |
 
@@ -111,7 +125,11 @@ reescrever o núcleo.
 - **Novo modelo/provedor:** registre um `ModelSpec` em `llm/catalog.py`; para outro
   provedor, implemente `LLMProvider.stream()` (traduzindo para/de content blocks).
 - **Nova tabela/coluna:** acrescente uma migração ao final de `MIGRATIONS` em `memory/db.py`.
-- **Nova interface:** assine o `EventBus` e use `Orchestrator.submit()`.
+- **Nova interface:** assine o `EventBus` e use `Orchestrator.submit()` (a voz local faz isso).
+- **Nova fonte de dados:** função assíncrona em `intel/` usando `HttpClient` + `IntelCache.fetch`
+  (cache com TTL e dado antigo quando a fonte cai) e um teste com `httpx.MockTransport`.
+- **Novo agente para delegação:** basta o `AgentProfile` com a lista `tools`; o subagente só
+  recebe essas ferramentas (mais `memory_search`).
 
 ## Registros de decisão (ADR)
 
@@ -197,3 +215,61 @@ exigiria para gatilho de logon), é fácil de desfazer e não interfere no naveg
 instrução de responder de forma curta e falável, e os eventos levam o canal para a interface
 decidir se fala a resposta. Mantém o histórico append-only (a instrução vai na mensagem do
 usuário, não no system prompt).
+
+### ADR-014 — Voz local no PC (Vosk + faster-whisper + SAPI)
+**Contexto:** o usuário quis o microfone do computador funcionando direto, sem depender da
+janela do navegador. **Decisão:** um `VoiceEngine` no servidor: captura com `sounddevice`
+(16 kHz, quadros de 20 ms), palmas pelo mesmo detector (portado para NumPy), palavra de
+ativação com **Vosk** em gramática restrita (barato, roda sempre), e só depois da ativação a
+transcrição com **faster-whisper** (int8, CPU, VAD, `hotwords="Sexta-Feira"`); fala com
+SAPI (pywin32) e PowerShell como reserva. Máquina de estados explícita
+(`idle → listening → transcribing → thinking → speaking`) e threads conversando com o loop
+via `run_coroutine_threadsafe`. **Por quê:** privacidade (áudio não sai do PC), funciona com
+o PC “sem tela”, custo zero. **Custo:** ~500 MB de modelos e alguma CPU durante a transcrição.
+
+### ADR-015 — Informações: fontes públicas + cache com fonte e horário
+**Decisão:** só fontes gratuitas e sem chave (Open-Meteo, BCB/SGS, AwesomeAPI, CoinGecko,
+Yahoo chart, RSS, Google Notícias/Trends) atrás de um `HttpClient` único; tudo passa por
+`IntelCache.fetch(chave, ttl, loader)` que guarda o horário da coleta e devolve o **último
+dado salvo** (marcado como antigo) se a fonte falhar. **Por quê:** a regra do produto exige
+fonte e horário em todo dado; o cache economiza chamadas e mantém a tela útil offline.
+**Detalhe aprendido:** no Yahoo, `chartPreviousClose` com `range=5d` é o fechamento de 5 dias
+atrás — a variação diária usa o último pregão anterior ao dia da cotação.
+
+### ADR-016 — Agendador dentro do processo
+**Decisão:** um laço de 30 s (`Scheduler.tick`) roda alertas a cada 5 min, pré-carrega dados a
+cada 20 min e gera resumos nos horários configurados (uma vez por data/horário, com janela de
+4 h para quando o PC estava desligado). Estado em `scheduler_state`. **Por quê:** a Sexta-Feira
+já fica ligada com o Windows; um agendador externo (Agendador de Tarefas) seria mais frágil e
+pediria permissões. Resumos usam a IA na camada Equilibrado, com texto-modelo se ela falhar.
+
+### ADR-017 — Multiagente como ferramenta (`delegate_tasks`)
+**Decisão:** em vez de um planejador separado, a própria IA principal decide quando dividir
+o trabalho chamando a ferramenta `delegate_tasks` (até 4 subtarefas). Cada subagente roda um
+ciclo IA + ferramentas próprio, em paralelo (semáforo de 3), com modelo escolhido pelo
+roteador, **lista fechada de ferramentas checada no código**, o mesmo `ToolExecutor` e sem
+poder delegar de novo. As conversas dos subagentes ficam em memória; o relatório volta como
+`tool_result`. **Por quê:** reaproveita roteamento, permissões, aprovação, auditoria e
+cancelamento sem duplicar nada, e mantém o histórico append-only intacto. O custo é somado à
+tarefa (`UsageTracker.task_cost`).
+
+### ADR-018 — Memória semântica: NumPy + RRF em vez de banco vetorial
+**Decisão:** embeddings locais com `fastembed` (`paraphrase-multilingual-MiniLM-L12-v2`,
+384 dim, ONNX) guardados como BLOB em `memory_vectors`; a busca carrega a matriz em memória
+e faz produto escalar com NumPy. O resultado é fundido ao do BM25 por **Reciprocal Rank
+Fusion** (1/(60+posição)), com um pequeno peso de importância. **Por quê:** memórias pessoais
+são milhares, não milhões — NumPy resolve em milissegundos sem extensão nativa do SQLite
+(sqlite-vec), e o RRF dispensa calibrar escalas de BM25 × cosseno. Sem o pacote opcional, tudo
+continua só com BM25. Mesclar duplicatas é sempre uma escolha do usuário.
+
+### ADR-019 — Navegador da IA numa thread dedicada, com guardas de rede
+**Decisão:** Playwright (API síncrona) confinado a uma thread (`ThreadPoolExecutor(1)`), Edge
+do Windows com perfil próprio, janela visível por padrão. A página vira uma lista numerada de
+elementos (`data-sexta-ref`) + texto; a IA age pelo número. Guardas no código: só http(s),
+bloqueio de rede local por resolução de DNS em **cada requisição** (`context.route`), campos
+sensíveis nunca preenchidos, risco do clique calculado pelo texto real do elemento e
+verificação de que o elemento não mudou entre a aprovação e o clique. **Por quê:** isolar o
+Playwright evita conflitos de loop (no Windows ele precisa do loop Proactor para subprocessos)
+e mantém o servidor responsivo; as guardas impedem que um site use a IA para atacar a rede
+local ou a própria Sexta-Feira.
+

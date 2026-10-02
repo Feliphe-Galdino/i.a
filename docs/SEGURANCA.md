@@ -38,7 +38,8 @@ arquivo = *escrita*; rodar `git status` = *execução*; `rm arquivo`, `taskkill`
 
 Em Configurações você pode **permitir**, **perguntar** ou **negar** cada capacidade
 (`fs.read`, `fs.write`, `fs.delete`, `shell.exec`, `process.control`, `apps.launch`,
-`web.search`, `memory.write`…), sobrepondo o nível de autonomia. “Negar” bloqueia por
+`web.search`, `memory.write`, `intel.read`, `alerts.write`, `web.read`, `browser.read`,
+`browser.act`, `agents.delegate`…), sobrepondo o nível de autonomia. “Negar” bloqueia por
 completo, inclusive ações críticas.
 
 ## Guardas rígidas (nenhuma configuração desliga)
@@ -90,14 +91,62 @@ pelas mesmas guardas e confirmações — a IA não tem como pular o executor.
 
 ## Voz
 
-- **Palmas:** detectadas localmente (AudioWorklet); nenhum áudio sai do computador.
-- **Fala:** o reconhecimento do navegador envia o áudio ao serviço de fala do Google (Chrome)
-  ou da Microsoft (Edge) **enquanto escuta**. Com “Olá, Sexta-Feira” desligado, ele só escuta
-  depois das palmas ou do botão.
+- **Motor local (padrão):** microfone, palmas, palavra de ativação (Vosk) e transcrição
+  (faster-whisper) rodam **no seu computador**; o áudio nunca sai do PC — só o texto do
+  pedido vai para a IA. A fala usa as vozes do Windows.
+- **Motor “Navegador” (alternativo):** o reconhecimento do Chrome/Edge envia o áudio ao
+  serviço de fala do Google/Microsoft enquanto escuta.
 - **Confirmações por voz** valem apenas para ações não críticas. Ações **críticas** sempre
   exigem clique na tela — uma TV ou outra pessoa dizendo “sim” não basta.
-- A janela de voz usa um **perfil próprio do navegador** dentro da pasta de dados protegida;
-  a permissão de microfone vale só para a Sexta-Feira (`http://127.0.0.1:8765`).
+- Os modelos de voz ficam em `<dados>/modelos`; downloads conferem caminhos ao extrair
+  (proteção contra “zip slip”).
+
+## Informação e mercado
+
+- Fontes públicas e gratuitas, sem chaves: Open-Meteo, Banco Central (SGS), AwesomeAPI,
+  CoinGecko, Yahoo Finance, Google Notícias/Trends e feeds RSS. Nenhum dado seu é enviado
+  além do nome da cidade (clima) e dos termos buscados.
+- Feeds são lidos com `defusedxml` (bloqueia ataques de XML); links só `http(s)` na tela.
+- Conteúdo de notícias é **dado, não instrução** (o system prompt reforça; a interface nunca
+  usa `innerHTML` com esse conteúdo).
+- Avisos de clima são estimativas da previsão, não alertas oficiais; cotações podem ter
+  atraso; nada é recomendação de investimento.
+
+## Subagentes (multiagente)
+
+- Cada subagente usa **o mesmo executor**: validação, guardas, política, aprovação e
+  auditoria são idênticas às da IA principal (aparecem na mesma tarefa).
+- Lista **fechada** de ferramentas por agente, conferida no código a cada chamada (pedir uma
+  ferramenta fora da lista retorna erro); **nunca** podem delegar de novo.
+- Orçamento: cada subagente passa pelo roteador (bloqueio de orçamento vale) e o custo entra
+  na tarefa de origem. O botão PARAR cancela todos.
+
+## Navegador (automação de sites)
+
+- **Só `http`/`https`.** Bloqueados: `file:`, `javascript:`, `data:`, páginas internas,
+  endereços com usuário/senha embutidos, **rede local** (127.x, 10.x, 172.16–31.x,
+  192.168.x, 169.254.x — inclui a própria Sexta-Feira e metadados de nuvem), `localhost`,
+  nomes sem domínio e `.local/.lan/.internal`. A checagem vale para a navegação, para
+  **cada requisição** feita pela página e para cada redirecionamento do `web_fetch`
+  (o nome é resolvido no DNS e conferido).
+- **Senhas, códigos de verificação e cartões nunca são digitados pela IA** — faça o login
+  você mesmo na janela do navegador (o perfil `navegador-ia` lembra depois). Valores de
+  campos nunca são lidos para a IA.
+- **Risco pelo elemento real:** clicar em “Comprar”, “Pagar”, “Enviar”, “Publicar”,
+  “Excluir”, “Assinar”, “Cadastrar”… é **crítico** (sempre pede confirmação); enviar
+  formulários pede confirmação no nível padrão; buscas e links são leitura.
+- Antes de clicar, o sistema confere se o elemento ainda é o mesmo que foi aprovado; se a
+  página mudou, nada é clicado.
+- Downloads desativados; janelas de alerta/confirmação das páginas são recusadas.
+- O texto das páginas chega à IA marcado como **dado externo**.
+
+## Memória semântica
+
+- Embeddings calculados **localmente** (fastembed/ONNX); nenhum texto de memória vai para
+  outro serviço por causa disso. Os vetores ficam no mesmo banco e são apagados junto com a
+  memória.
+- Mesclar memórias parecidas sempre exige sua escolha (frases parecidas podem dizer coisas
+  opostas).
 
 ## Início automático
 
@@ -107,6 +156,12 @@ pelas mesmas guardas e confirmações — a IA não tem como pular o executor.
 - `sexta stop` encerra o servidor oculto; o servidor nunca abre portas fora de `127.0.0.1`.
 
 ## Limitações conhecidas (honestidade)
+
+- A classificação de cliques é por palavras: um botão de compra com texto genérico
+  (“Continuar”) pode não ser reconhecido como crítico. Por isso, no nível padrão, enviar
+  formulários também pede confirmação — confira o resumo antes de aprovar.
+- Sites logados no perfil `navegador-ia` ficam acessíveis à IA (dentro das regras acima);
+  saia das contas que não quiser expor.
 
 - Um comando aprovado roda com as permissões do seu usuário no sistema: leia o resumo
   antes de aprovar ações de execução.

@@ -13,7 +13,7 @@ from .readable import html_to_text
 MAX_BYTES = 2_000_000
 MAX_REDIRECTS = 5
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SextaFeira/0.4 (assistente pessoal)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SextaFeira (assistente pessoal)",
     "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
     "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
 }

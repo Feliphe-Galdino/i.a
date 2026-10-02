@@ -100,10 +100,9 @@ export function mount(root) {
 
       card("Próximos módulos", "span-5 soon",
         h("div", { class: "roadmap" },
-          h("div", {}, h("span", { class: "tag violet" }, "Fase 2"), "Voz: “Olá, Sexta-Feira”, palmas e respostas faladas"),
-          h("div", {}, h("span", { class: "tag violet" }, "Fase 3"), "Memória semântica, projetos e planejador multiagente"),
-          h("div", {}, h("span", { class: "tag violet" }, "Fase 4"), "Notícias, mercado financeiro, clima e alertas"),
-          h("div", {}, h("span", { class: "tag violet" }, "Fase 5"), "Navegação web automatizada e integrações"))),
+          h("div", {}, h("span", { class: "tag violet" }, "Fase 4"), "Projetos com memória própria e aprendizado com 👍/👎"),
+          h("div", {}, h("span", { class: "tag violet" }, "Fase 5"), "Rotinas agendadas e integrações (agenda, e-mail, GitHub)"),
+          h("div", {}, h("span", { class: "tag violet" }, "Fase 6"), "App com ícone na bandeja e acesso pelo celular"))),
     );
   }
 

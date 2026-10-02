@@ -13,7 +13,7 @@ Construção em fases: cada uma entrega algo **utilizável** sem reconstruir o q
 - [x] Permissões, autonomia, confirmações, guardas, auditoria, orçamento, botão PARAR
 - [x] Interface HUD: chat em tempo real, painel, memória, atividade, configurações
 - [x] Pesquisa na web integrada (servidor da Anthropic)
-- [x] 105+ testes automatizados
+- [x] Testes automatizados (hoje 185+, incluindo navegador real e testes JS)
 
 ## ✅ Fase 2 — Voz e presença (concluída)
 
@@ -27,37 +27,56 @@ Construção em fases: cada uma entrega algo **utilizável** sem reconstruir o q
 - [x] Confirmação por voz para ações não críticas; críticas exigem clique
 - [x] O núcleo sabe quando o pedido veio por voz e responde de forma curta e falável
 
-**Melhorias futuras de voz:** reconhecimento local e offline (faster-whisper) e palavra de
-ativação local (openWakeWord) para privacidade total; vozes neurais locais (Piper).
+### ✅ Voz local (concluída)
 
-## Fase 3 — Inteligência ampliada
+- [x] Microfone direto no PC (sounddevice), funcionando **sem janela aberta**
+- [x] Palavra de ativação offline (Vosk, gramática restrita) e palmas no servidor
+- [x] Transcrição offline com **faster-whisper** (modelos base → large-v3-turbo)
+- [x] Fala com as vozes do Windows (SAPI), alertas e resumos falados
+- [x] `sexta voz instalar / dispositivos / testar`; motor “Navegador” mantido como alternativa
 
-- **Planejador multiagente:** decompõe pedidos complexos, executa agentes em paralelo e
-  consolida a resposta.
-- **Memória semântica:** embeddings (sqlite-vec) + BM25 híbrido; consolidação automática
-  (resumir/mesclar memórias parecidas).
+## ✅ Fase 3 — Inteligência ampliada, informação e automação (concluída)
+
+**3a · Informação e mercado**
+- [x] Notícias por tema (RSS de G1, Agência Brasil, BBC, InfoMoney, Tecnoblog…), busca no
+      Google Notícias e tendências do Google Trends
+- [x] Clima (Open-Meteo) com previsão de 7 dias e avisos estimados
+- [x] Cotações (B3, EUA, índices, moedas, cripto), histórico com estatísticas e indicadores
+      oficiais do Banco Central (SGS)
+- [x] Cache com fonte e horário, e uso de dados antigos quando a fonte cai
+- [x] Alertas (preço, variação, notícia, clima) e **resumo do dia** agendado
+- [x] Tela **Mundo** com gráficos (minilinhas e histórico com cursor e tabela)
+
+**3b · Multiagentes e memória semântica**
+- [x] `delegate_tasks`: subagentes em paralelo, ferramentas por agente, mesmas permissões,
+      sem recursão, custos na tarefa de origem, progresso ao vivo no chat
+- [x] Embeddings locais (fastembed, multilíngue) + busca híbrida BM25 × cosseno (RRF)
+- [x] Memórias parecidas: detecção e mescla com confirmação
+
+**3c · Automação de sites**
+- [x] Navegador próprio (Playwright + Edge), páginas como elementos numerados
+- [x] Abrir, ler, clicar, digitar, escolher, rolar, voltar, capturar a tela; `web_fetch`
+- [x] Guardas: rede local bloqueada, senhas/cartões nunca digitados, cliques críticos sempre
+      confirmados, conferência do elemento antes do clique
+
+## Fase 4 — Projetos e aprendizado contínuo
+
 - **Projetos:** contexto, arquivos, decisões e memória por projeto; compactação de
   conversas longas.
 - **Aprendizado de preferências:** feedback 👍/👎 ajusta o roteamento e o estilo.
+- Consolidação automática sugerida (resumir memórias antigas de um mesmo tema).
 - Classificador de roteamento com IA para pedidos ambíguos.
+- Planejador explícito (plano revisável antes de executar tarefas longas).
 
-## Fase 4 — Informação e mercado
+## Fase 5 — Automação avançada e integrações
 
-- Notícias nacionais e internacionais (RSS/APIs oficiais) com resumo e fontes.
-- Indicadores econômicos (Banco Central/SGS, IBGE), câmbio, Selic, IPCA.
-- Ações, FIIs, cripto (APIs de mercado) com gráficos no painel.
-- Clima e alertas (Open-Meteo, INMET/Defesa Civil).
-- Alertas personalizados e **resumos periódicos** (agendador).
-- Regras: fonte e horário em cada dado; fatos × estimativas × opiniões; previsões nunca são
-  garantias.
-
-## Fase 5 — Automação avançada
-
-- Navegação web automatizada (Playwright) com confirmações por etapa.
-- Rotinas/macros reutilizáveis (“toda sexta às 18h, faça backup de…”).
-- Monitoramento de processos e alertas de recursos.
+- Rotinas/macros reutilizáveis (“toda sexta às 18h, faça backup de…”), reaproveitando o
+  agendador da Fase 3.
+- Monitoramento de processos e alertas de recursos do PC.
 - Integrações via **MCP** (Model Context Protocol): Google Calendar, e-mail, GitHub,
   Notion, casa inteligente.
+- Fontes oficiais extras: INMET/Defesa Civil (alertas de clima), IBGE.
+- Vozes neurais locais (Piper) e palavra de ativação treinada (openWakeWord).
 
 ## Fase 6 — Multiplataforma
 

@@ -12,19 +12,24 @@ brevemente e aponte onde estudar (`docs/APRENDIZADO.md`).
 ## Estado atual
 - **Plataforma-alvo: somente Windows 11** (decisão do usuário). Repositório pessoal/privado.
 - **Fase 1 concluída** (núcleo, memória, segurança, ferramentas, API, interface HUD, testes).
-- **Fase 2 concluída** (voz no navegador, palmas, respostas faladas, iniciar com o Windows).
-- **Próxima: Fase 3 — inteligência ampliada** (planejador multiagente, memória semântica,
-  projetos) — confirmar prioridade com o usuário (ver `docs/ROADMAP.md`).
+- **Fase 2 concluída** (voz no navegador, palmas, respostas faladas, iniciar com o Windows)
+  + **voz local** no servidor (microfone direto, Vosk + faster-whisper + SAPI) — padrão.
+- **Fase 3 concluída:** 3a informação e mercado (tela Mundo, alertas, resumos, agendador),
+  3b multiagentes (`delegate_tasks`) e memória semântica (fastembed + RRF), 3c automação
+  de sites (Playwright, guardas de rede).
+- **Próxima: Fase 4 — projetos e aprendizado contínuo** (ver `docs/ROADMAP.md`); confirmar
+  prioridade com o usuário.
 - A conta da Anthropic do usuário estava **sem créditos** em 2026-10-02; a integração real
   com a API ainda não foi exercitada de ponta a ponta (só com provedor simulado e testes).
 
 ## Comandos
 ```bash
-pip install -e ".[dev]"      # instalar (venv recomendado)
+pip install -e ".[completo,dev]"   # instalar tudo (venv recomendado); extras: voz, memoria, web
 pytest -q                    # testes (devem passar sempre)
 ruff check src tests && ruff format src tests
 node --test tests/js/*.test.mjs   # testes JS (o pytest já chama se houver Node)
-sexta serve | open | stop | autostart on|off|status | token | doctor
+sexta serve | open | stop | autostart on|off|status [--janela] | voz instalar|dispositivos|testar
+sexta memoria instalar | token | doctor
 ```
 
 ## Convenções
@@ -47,11 +52,18 @@ sexta serve | open | stop | autostart on|off|status | token | doctor
 5. Lista de ferramentas em ordem estável (faz parte do prefixo em cache).
 6. Interface: nunca usar `innerHTML` com dados não escapados; use `h()`/`add()`/`fill()` de
    `web/js/ui.js` (o `Element.append` nativo transforma arrays/null em texto).
-7. **Voz:** ações críticas nunca são aprovadas por voz (só clique). Palmas são processadas
-   localmente. Preferências de voz ficam no `localStorage` de cada janela (a janela dedicada
-   tem perfil próprio); padrão "texto" em abas comuns, "ambos" na janela aberta com `?voz=1`.
+7. **Voz:** ações críticas nunca são aprovadas por voz (só clique). Motor padrão = **local**
+   (servidor, `voice_engine="local"`, configurações no banco); a interface só espelha o estado.
+   No motor "navegador", preferências ficam no `localStorage` de cada janela.
 8. Nunca gravar chaves/tokens em arquivos versionados (o usuário já colou uma chave no chat:
    ela vive só no `.env` local, que está no `.gitignore`).
+9. **Subagentes** usam o mesmo `ToolExecutor`, lista fechada de ferramentas checada no código
+   e nunca recebem `delegate_tasks` (sem recursão).
+10. **Navegador:** só http(s); rede local bloqueada em toda requisição (`UrlGuard`); senhas/
+    cartões nunca digitados; risco do clique pelo texto real do elemento; conferir o elemento
+    antes de clicar. Testes liberam hosts locais só via `allow_hosts`.
+11. Dados de mercado/notícias sempre com **fonte e horário**; estimativas marcadas; nada é
+    recomendação.
 
 ## Integração com a API do Claude (estado em 2026-10)
 - Modelos: `claude-haiku-4-5` (rápido; sem `effort`/thinking), `claude-sonnet-5-5`,
@@ -75,6 +87,20 @@ sexta serve | open | stop | autostart on|off|status | token | doctor
   `sexta stop` → `POST /api/system/shutdown`.
 - Teste e2e de palmas: Chromium com `--use-file-for-fake-audio-capture=claps.wav%noloop`.
 
+## Fase 3 — onde fica cada coisa
+- `intel/`: `http.py` (cliente único, `MockTransport` nos testes), `cache.py` (`fetch` com TTL
+  e dado antigo), `feeds.py`, `weather.py`, `market.py`, `service.py` (fachada), `alerts.py`,
+  `briefing.py`, `scheduler.py`. Rotas em `api/intel_routes.py`; UI em `web/js/views/world.js`
+  + `web/js/charts.js` (SVG puro; seguir a skill de dataviz).
+- `agents/delegation.py` (`Delegator`), ferramenta em `tools/agent_tools.py`; eventos
+  `subagent` aparecem no cartão do chat. Custo da tarefa = `UsageTracker.task_cost`.
+- `memory/semantic.py` (`SemanticIndex`; estados off/loading/ready/unavailable/disabled);
+  `build_sexta(embedder_factory=...)` injeta embedder falso nos testes.
+- `browser/` (`service.py` thread dedicada, `guards.py`, `fetch.py`, `readable.py`);
+  ferramentas em `tools/browser_tools.py`; `build_sexta(browser=...)` nos testes.
+- `ToolOutput.images` vira bloco `image` no `tool_result`; `ToolContext.tool_use_id` é
+  preenchido pelo executor.
+
 ## Armadilhas já encontradas
 - Python 3.11: `asyncio.wait_for` pode engolir cancelamento se o futuro concluir junto →
   `TaskManager` mantém flag `cancel_requested` checada pelo orquestrador.
@@ -85,6 +111,12 @@ sexta serve | open | stop | autostart on|off|status | token | doctor
 - `pythonw` não tem console (`sys.stdout is None`): logs vão para `<data>/logs/sexta.log`.
 - Reconhecimento de fala do Chrome: sessões contínuas terminam sozinhas → reiniciar no `onend`
   com backoff; erro `audio-capture` pode ser passageiro (não bloquear de vez).
+- Yahoo chart: `chartPreviousClose` com `range=5d` é de 5 dias atrás → variação diária vem do
+  último pregão anterior (`_previous_close`).
+- Ambiente de nuvem do Claude Code: a política de rede bloqueia as fontes externas e os
+  downloads de modelos (403 no proxy) → testar com mocks; `pkill -f` pode matar o próprio shell.
+- Playwright no Windows precisa do loop Proactor (subprocessos) — garantido na thread do
+  navegador.
 
 ## Estrutura
-`src/sexta/{core,llm,memory,security,tools,agents,api,web}` · `tests/` · `docs/`
+`src/sexta/{core,llm,memory,security,tools,agents,intel,browser,voice,api,web}` · `tests/` · `docs/`

@@ -81,6 +81,67 @@ Permite responder em streaming, rodar várias tarefas e esperar aprovações sem
 - **Exercício:** rode `sexta autostart status` e encontre o valor `SextaFeira` no
   Editor do Registro (`regedit`) em `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
 
+### 12b. Voz local: threads, filas e modelos de fala
+- Veja: `voice/engine.py` (máquina de estados no servidor, threads + `run_coroutine_threadsafe`),
+  `voice/dsp.py` (detector de palmas e *endpointer* em NumPy), `voice/recognition.py`
+  (Vosk com gramática restrita + faster-whisper) e `tests/test_voice_local.py` (tudo com
+  microfone e modelos falsos).
+- Conceitos: produtor/consumidor, *thread safety*, VAD (detecção de fala), *pre-roll*,
+  por que separar “ativação barata sempre ligada” de “transcrição cara sob demanda”.
+- **Exercício:** rode `sexta voz testar` com `--modelo base` e com `--modelo small` e compare
+  tempo e qualidade.
+
+## Fase 3 — conceitos usados
+
+### 13. Consumo de APIs públicas, cache e resiliência
+- Veja: `intel/http.py`, `intel/cache.py` (`fetch` com TTL e dado antigo de reserva),
+  `intel/market.py`, `intel/weather.py` e `tests/test_intel.py` (internet simulada com
+  `httpx.MockTransport`).
+- Conceitos: TTL, *stale-while-error*, `asyncio.gather` com falhas isoladas, parsing
+  seguro de XML (`defusedxml`), fuso horário de bolsa.
+- **Exercício:** leia `_previous_close` em `intel/market.py` e o teste
+  `test_yahoo_daily_change_uses_previous_session_not_chart_start`: explique o bug que ele
+  evita. Depois adicione o ativo `GOLD` (ouro) em `ALIASES`.
+
+### 14. Visualização de dados honesta
+- Veja: `web/js/charts.js` (SVG puro: escala com marcas “redondas”, área a 10%, cursor que
+  segue o mouse/teclado, tabela equivalente) e `web/js/views/world.js`.
+- Conceitos: escolher a forma pelo trabalho do dado (número → cartão; tempo → linha), um
+  eixo só, rótulo direto só no último ponto, acessibilidade (tabela, teclado, `aria-label`).
+- **Exercício:** em `tests/js/world.test.mjs`, acrescente um caso para `niceTicks(0.012, 0.019)`.
+
+### 15. Agendamento e tarefas em segundo plano
+- Veja: `intel/scheduler.py` (`tick(now)` testável com relógio injetado), `intel/alerts.py`
+  (intervalo mínimo, disparo único), `intel/briefing.py` (IA com reserva por modelo fixo).
+- **Exercício:** crie um alerta “variação maior que 2%” para o Bitcoin na tela Mundo e use
+  “Verificar agora”; depois encontre o registro em `alert_events`.
+
+### 16. Sistemas multiagente
+- Veja: `agents/delegation.py` (subagentes em paralelo com `asyncio.Semaphore`, lista
+  fechada de ferramentas, sem recursão, cancelamento) e `tests/test_phase3b.py`
+  (`RoutedProvider` responde conforme quem chama).
+- Conceitos: decomposição de tarefas, paralelismo × custo, *least privilege* por agente,
+  por que “ferramenta de delegação” é mais simples que um planejador separado (ADR-017).
+- **Exercício:** peça no chat: *“pesquise as notícias de IA de hoje e, em paralelo, me diga
+  como está o dólar”* e observe os cartões dos subagentes.
+
+### 17. Embeddings e busca híbrida
+- Veja: `memory/semantic.py` (vetores normalizados, similaridade de cosseno = produto
+  escalar, RRF) e `memory/memories.py` (`search`).
+- Conceitos: espaço vetorial, normalização L2, *recall* × precisão, limiar de similaridade,
+  fusão por posição (RRF).
+- **Exercício:** salve “tenho um automóvel elétrico” e busque “carro” na tela Memória com a
+  busca por significado ligada e desligada.
+
+### 18. Automação de navegador com segurança
+- Veja: `browser/service.py` (thread dedicada, retrato da página com elementos numerados),
+  `browser/guards.py` (SSRF, campos sensíveis, risco do clique) e `tests/test_browser.py`
+  (site local + Chromium real).
+- Conceitos: SSRF e por que bloquear a rede local, TOCTOU (o elemento mudou entre a
+  aprovação e o clique), *prompt injection* vindo de páginas.
+- **Exercício:** peça *“abra o site do Banco Central e me diga a meta da Selic”* e veja no
+  chat quais ações precisaram de confirmação.
+
 ## Hábitos de engenharia que o projeto pratica
 
 - Pequenas entregas funcionais (fases), cada uma testada.
@@ -90,6 +151,6 @@ Permite responder em streaming, rodar várias tarefas e esperar aprovações sem
 
 ## Como pedir ajuda para evoluir
 
-Ao abrir uma nova sessão comigo, diga a fase/objetivo (ex.: “vamos começar a Fase 2: voz”).
+Ao abrir uma nova sessão comigo, diga a fase/objetivo (ex.: “vamos começar a Fase 4: projetos”).
 O arquivo `CLAUDE.md` na raiz guarda o contexto do projeto e as convenções, para eu
 continuar exatamente de onde paramos.
