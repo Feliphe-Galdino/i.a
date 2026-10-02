@@ -6,9 +6,11 @@ interfaces (CLI, voz, app de celular) reutilizam ``build_sexta``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .agents.delegation import Delegator
 from .config import Settings
 from .core.events import EventBus
 from .core.orchestrator import Orchestrator
@@ -27,6 +29,7 @@ from .llm.catalog import Tier
 from .memory.conversations import ConversationService
 from .memory.db import Database
 from .memory.memories import MemoryService
+from .memory.semantic import Embedder, FastEmbedEmbedder, SemanticIndex
 from .security.approvals import ApprovalBroker
 from .security.audit import AuditLog
 from .security.guards import SecretRedactor
@@ -62,6 +65,8 @@ class Sexta:
     alerts: AlertService
     briefings: BriefingService
     scheduler: Scheduler
+    semantic: SemanticIndex
+    delegator: Delegator
 
     def close(self) -> None:
         self.voice.shutdown()
@@ -76,6 +81,7 @@ def build_sexta(
     run_key: RunKey | None = None,
     voice_factories: dict | None = None,
     http: HttpClient | None = None,
+    embedder_factory: Callable[[], Embedder] | None = None,
 ) -> Sexta:
     settings = settings or Settings()
     settings.ensure_dirs()
@@ -84,7 +90,13 @@ def build_sexta(
     bus = EventBus()
     runtime = RuntimeSettingsStore(db, settings)
     conversations = ConversationService(db)
-    memory = MemoryService(db)
+    models = ModelStore(settings.models_dir)
+    semantic = SemanticIndex(
+        db,
+        embedder_factory or (lambda: FastEmbedEmbedder(models.embeddings_dir)),
+        enabled=lambda: runtime.get().semantic_memory,
+    )
+    memory = MemoryService(db, semantic)
     usage = UsageTracker(db)
     audit = AuditLog(db)
     approvals = ApprovalBroker(bus, timeout_s=settings.approval_timeout_s)
@@ -109,7 +121,6 @@ def build_sexta(
         }
     )
     provider = provider or build_provider(settings)
-    models = ModelStore(settings.models_dir)
     orchestrator = Orchestrator(
         settings=settings,
         runtime=runtime,
@@ -128,7 +139,8 @@ def build_sexta(
     alerts = AlertService(db, bus)
     briefings = BriefingService(db, intel, alerts, orchestrator, bus)
     scheduler = Scheduler(db, runtime, intel, alerts, briefings)
-    orchestrator.services.update(intel=intel, alerts=alerts)
+    delegator = Delegator(orchestrator)
+    orchestrator.services.update(intel=intel, alerts=alerts, delegator=delegator)
 
     return Sexta(
         settings=settings,
@@ -161,4 +173,6 @@ def build_sexta(
         alerts=alerts,
         briefings=briefings,
         scheduler=scheduler,
+        semantic=semantic,
+        delegator=delegator,
     )

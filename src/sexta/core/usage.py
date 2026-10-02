@@ -62,6 +62,13 @@ class UsageTracker:
         row = self.db.query_one("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM usage_log WHERE ts >= ?", (since_iso,))
         return float(row["total"]) if row else 0.0
 
+    def task_cost(self, task_id: str) -> float:
+        """Custo total de uma tarefa, incluindo subagentes e resumos ligados a ela."""
+        row = self.db.query_one(
+            "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM usage_log WHERE task_id = ?", (task_id,)
+        )
+        return float(row["total"]) if row else 0.0
+
     def spent_today(self) -> float:
         return self.spent_since(local_day_start_utc())
 

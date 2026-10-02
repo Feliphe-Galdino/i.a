@@ -14,17 +14,20 @@ export function mount(root) {
   const counter = h("span", { class: "hint" });
   const formSlot = h("div");
   const gridEl = h("div", { class: "mem-grid" });
+  const semanticBar = h("div", { class: "semantic-bar panel" });
+  let semantic = null;
 
   const page = h("div", { class: "page" },
     h("h1", { class: "page-title" }, "Memória de longo prazo"),
     h("p", { class: "hint", style: { marginTop: "-8px" } },
-      "Tudo o que a Sexta-Feira aprendeu sobre você. Apenas memórias relevantes (e as fixadas) são enviadas à IA em cada conversa."),
+      "Tudo o que a Sexta-Feira aprendeu sobre você. Apenas memórias relevantes (e as fixadas) são enviadas à IA em cada conversa. A busca combina palavras e significado (calculado no seu PC)."),
     h("div", { class: "toolbar" }, search, category,
       h("button", { class: "btn primary", onclick: () => openForm(null) }, "+ Nova memória"),
       h("button", { class: "btn", onclick: exportAll }, "Exportar"),
       h("button", { class: "btn", onclick: () => fileInput.click() }, "Importar"),
       h("button", { class: "btn danger", onclick: wipe }, "Apagar tudo"),
       counter, fileInput),
+    semanticBar,
     formSlot,
     gridEl);
   root.append(page);
@@ -51,6 +54,71 @@ export function mount(root) {
       counter.textContent = `${items.length} memória(s)`;
       fill(gridEl, items.length ? items.map(renderCard) : h("p", { class: "empty" },
         search.value || category.value ? "Nada encontrado." : "Ainda não há memórias. Converse com a Sexta-Feira ou adicione uma manualmente."));
+    } catch (err) { toast(err.message, "bad"); }
+    loadSemantic();
+  }
+
+  // --- Busca por significado (embeddings locais) ------------------------------------
+  const SEMANTIC_LABEL = {
+    ready: "ativa", loading: "carregando o modelo…", off: "aguardando", disabled: "desligada", unavailable: "indisponível",
+  };
+
+  async function loadSemantic() {
+    try { semantic = await api("/api/memories/semantic"); } catch { semantic = null; }
+    renderSemantic();
+    if (semantic?.state === "loading") setTimeout(() => { if (semanticBar.isConnected) loadSemantic(); }, 2500);
+  }
+
+  function renderSemantic() {
+    if (!semantic) return fill(semanticBar);
+    const toggle = h("input", { type: "checkbox", checked: semantic.state !== "disabled", "aria-label": "Busca por significado" });
+    toggle.addEventListener("change", async () => {
+      try {
+        await api("/api/settings", { method: "PUT", body: { semantic_memory: toggle.checked } });
+        loadSemantic();
+      } catch (err) { toast(err.message, "bad"); }
+    });
+    const ready = semantic.state === "ready";
+    fill(semanticBar,
+      h("label", { class: "switch" }, toggle, "Busca por significado"),
+      h("span", { class: `tag ${ready ? "green" : semantic.state === "unavailable" ? "amber" : ""}` }, SEMANTIC_LABEL[semantic.state] || semantic.state),
+      ready ? h("span", { class: "hint" }, `${semantic.indexed} de ${semantic.total} memórias indexadas`) : null,
+      semantic.error ? h("span", { class: "hint grow" }, semantic.error) : h("span", { class: "grow" }),
+      h("button", { class: "btn small", type: "button", disabled: semantic.state === "disabled" || semantic.state === "loading", onclick: reindex }, ready ? "Reindexar" : "Tentar carregar"),
+      h("button", { class: "btn small", type: "button", disabled: !ready, onclick: findDuplicates, title: "Encontra memórias quase iguais para você mesclar" }, "Encontrar parecidas"));
+  }
+
+  async function reindex() {
+    try { await api("/api/memories/semantic/reindex", { method: "POST" }); toast("Reindexando em segundo plano…", "info"); } catch (err) { toast(err.message, "bad"); }
+    setTimeout(loadSemantic, 1200);
+  }
+
+  async function findDuplicates() {
+    let data;
+    try { data = await api("/api/memories/duplicates"); } catch (err) { return toast(err.message, "bad"); }
+    if (!data.pairs.length) {
+      clear(formSlot);
+      return toast("Nenhuma memória repetida encontrada. 👌", "good");
+    }
+    const side = (keep, other) => h("div", { class: "dup-side" },
+      h("p", {}, keep.content),
+      h("div", { class: "row" }, h("span", { class: "tag cyan" }, keep.category), h("span", { class: "stars" }, "★".repeat(keep.importance)),
+        h("button", { class: "btn small", type: "button", onclick: () => merge(keep, other) }, "Manter esta")));
+    fill(formSlot, h("section", { class: "panel dup-panel" },
+      h("div", { class: "panel-head" }, h("span", { class: "grow" }, `Memórias parecidas (${data.pairs.length})`),
+        h("button", { class: "btn ghost small", type: "button", onclick: () => clear(formSlot) }, "Fechar")),
+      h("div", { class: "panel-body" },
+        h("p", { class: "hint" }, "Escolha qual texto manter: a outra é apagada e as tags, a importância e o “fixada” são somados. Confira antes — frases parecidas podem dizer coisas opostas (“gosto” × “não gosto”)."),
+        data.pairs.map((p) => h("div", { class: "dup-pair" },
+          side(p.a, p.b), h("div", { class: "dup-score", title: "Similaridade de significado" }, `${Math.round(p.similarity * 100)}%`), side(p.b, p.a))))));
+  }
+
+  async function merge(keep, remove) {
+    try {
+      await api("/api/memories/merge", { method: "POST", body: { keep_id: keep.id, remove_id: remove.id } });
+      toast("Memórias mescladas.", "good");
+      await load();
+      findDuplicates();
     } catch (err) { toast(err.message, "bad"); }
   }
 

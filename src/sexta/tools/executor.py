@@ -8,6 +8,7 @@ que ela possa explicar ou tentar outro caminho.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import time
 from typing import Any
 
@@ -68,6 +69,7 @@ class ToolExecutor:
                 result["is_error"] = True
             return result
 
+        ctx = dataclasses.replace(ctx, tool_use_id=tool_use_id)
         tool = self.registry.get(name)
         if tool is None:
             return await finish(ToolOutput(f"Ferramenta desconhecida: {name}", is_error=True), "error")

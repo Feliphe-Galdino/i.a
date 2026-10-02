@@ -24,6 +24,11 @@ const SUGGESTIONS = [
 const FINAL_TOOL_STATES = new Set(["done", "error", "blocked", "denied", "rejected"]);
 
 /** Mensagem da assistente (ao vivo ou do histórico). */
+const SUBAGENT_STATUS = {
+  queued: "na fila", thinking: "pensando", tool: "usando ferramenta", done: "concluído", error: "erro",
+  blocked: "bloqueado", refused: "recusado", incomplete: "incompleto", cancelled: "cancelado",
+};
+
 class AssistantView {
   constructor({ live: isLive = false } = {}) {
     this.meta = h("div", { class: "msg-meta" }, h("span", { class: "who" }, "SEXTA-FEIRA"));
@@ -136,6 +141,33 @@ class AssistantView {
       card.result.classList.remove("hidden");
       if (is_error && !status) card.el.classList.add("error");
     }
+  }
+
+  /** Progresso dos subagentes dentro do cartão da ferramenta delegate_tasks (sempre visível). */
+  updateSubagent(ev) {
+    let card = this.tools.get(ev.tool_use_id);
+    if (!card) card = this.addTool({ id: ev.tool_use_id, name: "delegate_tasks", status: "running" });
+    if (!card.agents) {
+      card.agents = new Map();
+      card.agentList = h("ol", { class: "subagents" });
+      card.el.insertBefore(card.agentList, card.el.querySelector(".tool-body"));
+    }
+    let row = card.agents.get(ev.index);
+    if (!row) {
+      row = { status: h("span", { class: "sa-status" }), detail: h("span", { class: "sa-detail" }), cost: h("span", { class: "sa-cost" }) };
+      row.el = h("li", { class: "sa-row" },
+        h("span", { class: "sa-agent" }, ev.agent_name || ev.agent), row.status,
+        h("span", { class: "sa-task", title: ev.task || "" }, ev.task || ""), row.detail, row.cost);
+      card.agents.set(ev.index, row);
+      card.agentList.append(row.el);
+    }
+    row.el.dataset.status = ev.status;
+    row.status.textContent = SUBAGENT_STATUS[ev.status] || ev.status;
+    if (ev.detail) row.detail.textContent = ev.detail;
+    else if (ev.model) row.detail.textContent = ev.model.replace("claude-", "");
+    if (ev.cost_usd) row.cost.textContent = fmt.usd(ev.cost_usd);
+    if (ev.status === "done" || ev.status === "error") row.detail.textContent = "";
+    this.setIndicator("agentes trabalhando");
   }
 
   alert(message, kind = "") {
@@ -386,6 +418,9 @@ export function mount(root) {
       case "tool_status":
         if (!view.tools.has(ev.tool_use_id)) view.addTool({ id: ev.tool_use_id, name: ev.tool });
         view.updateTool(ev.tool_use_id, ev);
+        break;
+      case "subagent":
+        if (ev.tool_use_id) view.updateSubagent(ev);
         break;
       case "assistant_message":
         for (const [, card] of view.tools) {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -38,6 +39,7 @@ async def status(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
         "daily_budget_usd": runtime.daily_budget_usd,
         "memory": sexta.memory.stats(),
         "voice": sexta.voice.status(),
+        "semantic_memory": sexta.semantic.status()["state"],
         "system": await asyncio.to_thread(system_snapshot, str(sexta.settings.workspace_dir)),
     }
 
@@ -170,6 +172,46 @@ def export_memories(sexta: Sexta = Depends(get_sexta)) -> Response:
         media_type="application/json",
         headers={"Content-Disposition": 'attachment; filename="sexta-feira-memorias.json"'},
     )
+
+
+@router.get("/memories/semantic")
+def semantic_status(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
+    return sexta.semantic.status()
+
+
+@router.post("/memories/semantic/reindex")
+def semantic_reindex(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
+    """Recarrega o modelo (se preciso) e recalcula todos os vetores em segundo plano."""
+    semantic = sexta.semantic
+    if semantic.ready:
+        threading.Thread(target=semantic.backfill, kwargs={"rebuild": True}, daemon=True).start()
+    else:
+        semantic.start()
+    return semantic.status()
+
+
+@router.get("/memories/duplicates")
+def memory_duplicates(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
+    if not sexta.semantic.ready:
+        return {"available": False, "pairs": [], "status": sexta.semantic.status()}
+    return {"available": True, "pairs": sexta.memory.duplicates()}
+
+
+class MergeIn(BaseModel):
+    keep_id: int
+    remove_id: int
+
+
+@router.post("/memories/merge")
+def merge_memories(body: MergeIn, sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
+    try:
+        merged = sexta.memory.merge(body.keep_id, body.remove_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Memória não encontrada.") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    sexta.audit.record("memories_merged", detail={"kept": body.keep_id, "removed": body.remove_id})
+    return merged.to_dict()
 
 
 @router.post("/memories/import")
@@ -324,6 +366,8 @@ def update_settings(changes: dict[str, Any], sexta: Sexta = Depends(get_sexta)) 
     sexta.audit.record("settings_changed", detail={"changes": {k: after[k] for k in changed}})
     if sexta.voice.loop is not None:
         sexta.voice.apply_settings(changed)
+    if "semantic_memory" in changed and after["semantic_memory"] and not sexta.semantic.ready:
+        sexta.semantic.start()  # carrega o modelo em segundo plano
     return after
 
 

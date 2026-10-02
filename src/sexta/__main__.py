@@ -8,6 +8,7 @@ sexta autostart status   mostra se está ligado
 sexta voz instalar       baixa os modelos de voz (ativação + transcrição)
 sexta voz dispositivos   lista os microfones
 sexta voz testar         grava 5 s, transcreve e repete em voz alta
+sexta memoria instalar   baixa o modelo de busca por significado e indexa as memórias
 sexta token              mostra o token de acesso
 sexta doctor             verifica a instalação e a configuração
 """
@@ -248,6 +249,33 @@ def cmd_voice(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_memory(_args: argparse.Namespace) -> int:
+    """Baixa/carrega o modelo de embeddings e indexa todas as memórias."""
+    from .memory.db import Database
+    from .memory.semantic import FastEmbedEmbedder, SemanticIndex, SemanticUnavailable
+    from .voice.models import ModelStore
+
+    settings = Settings()
+    settings.ensure_dirs()
+    store = ModelStore(settings.models_dir)
+    print("Preparando a busca por significado (download de ~220 MB na primeira vez)…")
+    try:
+        embedder = FastEmbedEmbedder(store.embeddings_dir)
+    except SemanticUnavailable as exc:
+        print(exc)
+        return 1
+    db = Database(settings.db_path)
+    try:
+        index = SemanticIndex(db, lambda: embedder)
+        index.embedder, index.state = embedder, "ready"
+        count = index.backfill()
+        status = index.status()
+    finally:
+        db.close()
+    print(f"Pronto: {count} memória(s) indexada(s) agora; {status['indexed']} de {status['total']} no total.")
+    return 0
+
+
 def cmd_token(_args: argparse.Namespace) -> int:
     settings = Settings()
     print(settings.token)
@@ -313,6 +341,18 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
             "Rode `sexta autostart on` nesta pasta para ligar.",
             required=False,
         )
+    try:
+        import fastembed  # noqa: F401
+
+        semantic = True
+    except ImportError:
+        semantic = False
+    check(
+        "Busca por significado (fastembed)",
+        semantic,
+        'Opcional: pip install -e ".[memoria]" e depois sexta memoria instalar',
+        required=False,
+    )
     print("\nTudo certo!" if ok else "\nHá itens para revisar acima.")
     return 0 if ok else 1
 
@@ -342,6 +382,9 @@ def build_parser() -> argparse.ArgumentParser:
     voz.add_argument("acao", choices=["instalar", "dispositivos", "testar"])
     voz.add_argument("--modelo", choices=["base", "small", "medium", "large-v3-turbo"], help="modelo de transcrição")
     voz.set_defaults(func=cmd_voice)
+    mem = sub.add_parser("memoria", help="memória semântica (busca por significado)")
+    mem.add_argument("acao", choices=["instalar"])
+    mem.set_defaults(func=cmd_memory)
     sub.add_parser("token", help="mostra o token de acesso").set_defaults(func=cmd_token)
     sub.add_parser("doctor", help="verifica a instalação").set_defaults(func=cmd_doctor)
     return parser

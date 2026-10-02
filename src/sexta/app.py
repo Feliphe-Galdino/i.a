@@ -35,6 +35,7 @@ def create_app(
         if sexta.settings.background_services:
             loop = asyncio.get_running_loop()
             sexta.voice.start(loop)
+            sexta.semantic.start()
             sexta.scheduler.start(loop)
         yield
         sexta.scheduler.stop()

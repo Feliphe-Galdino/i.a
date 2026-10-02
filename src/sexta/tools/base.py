@@ -48,6 +48,8 @@ class ToolContext:
     alerts: Any = None
     browser: Any = None
     delegator: Any = None
+    # Preenchido pelo executor durante cada chamada (ex.: progresso dos subagentes no cartão certo)
+    tool_use_id: str | None = None
 
 
 @dataclass

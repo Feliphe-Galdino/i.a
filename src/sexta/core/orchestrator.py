@@ -412,6 +412,7 @@ class Orchestrator:
         self._append_results(conv_id, task_id, results)
 
     async def _finish(self, publish, task_id, status, error, text, usage, cost, decision) -> dict[str, Any]:
+        cost = max(cost, self.usage.task_cost(task_id))  # inclui o que os subagentes gastaram
         self.tasks.update_record(task_id, status=status, error=error, cost_usd=round(cost, 6), finished_at=utcnow())
         result = {
             "task_id": task_id,
