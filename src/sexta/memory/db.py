@@ -147,6 +147,60 @@ MIGRATIONS: list[str] = [
         value TEXT NOT NULL
     );
     """,
+    # v2 — Fase 3: informações, alertas, resumos, agendador e memória semântica
+    """
+    CREATE TABLE intel_cache (
+        key TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        fetched_at TEXT NOT NULL
+    );
+
+    CREATE TABLE alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        params TEXT NOT NULL DEFAULT '{}',
+        label TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        cooldown_h REAL NOT NULL DEFAULT 6,
+        last_triggered_at TEXT,
+        created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE alert_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alert_id INTEGER,
+        ts TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        data TEXT NOT NULL DEFAULT '{}',
+        read INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX idx_alert_events_ts ON alert_events(ts);
+
+    CREATE TABLE briefings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'diario',
+        headline TEXT NOT NULL DEFAULT '',
+        text TEXT NOT NULL,
+        data TEXT NOT NULL DEFAULT '{}',
+        task_id TEXT,
+        conversation_id TEXT
+    );
+
+    CREATE TABLE scheduler_state (
+        job TEXT PRIMARY KEY,
+        last_run TEXT
+    );
+
+    CREATE TABLE memory_vectors (
+        memory_id INTEGER PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        dim INTEGER NOT NULL,
+        vector BLOB NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """,
 ]
 
 

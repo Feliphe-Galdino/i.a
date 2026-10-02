@@ -120,25 +120,131 @@ export function mount(root) {
   }
 
   async function save() {
+    // Envia só o que mudou (a seção de voz salva na hora e não pode ser sobrescrita).
+    const changes = {};
+    for (const [key, value] of Object.entries(draft)) {
+      if (JSON.stringify(value) !== JSON.stringify(data.runtime[key])) changes[key] = value;
+    }
+    if (!Object.keys(changes).length) return toast("Nada para salvar.", "info");
     try {
-      await api("/api/settings", { method: "PUT", body: draft });
+      await api("/api/settings", { method: "PUT", body: changes });
       toast("Configurações salvas.", "good");
       await load();
       refreshStatus().catch(() => {});
     } catch (err) { toast(err.message, "bad", 7000); }
   }
 
-  // --- Voz e ativação (preferências deste navegador; salvas na hora) -----------
+  // --- Voz e ativação ------------------------------------------------------------
+  const ENGINES = [
+    ["local", "Local no PC", "Microfone direto, reconhecimento offline e voz do Windows. Funciona sem janela aberta."],
+    ["navegador", "Navegador", "Microfone e vozes do Chrome/Edge (precisa da janela aberta)."],
+    ["desligado", "Desligado", "Sem voz."],
+  ];
+  const WHISPER = [
+    ["base", "Base — rápido (~145 MB)"],
+    ["small", "Small — recomendado (~470 MB)"],
+    ["medium", "Medium — mais preciso, mais lento (~1,5 GB)"],
+    ["large-v3-turbo", "Large v3 Turbo — máxima precisão, PC forte (~1,6 GB)"],
+  ];
   const voicePanel = h("section", { class: "panel" });
   const meterFill = h("span", { class: "fill" });
   const meterMark = h("span", { class: "mark" });
   const meter = h("div", { class: "meter", title: "Nível do microfone (a linha laranja é o limite para uma palma)" }, meterFill, meterMark);
   const clapInfo = h("span", { class: "hint" }, "Bata duas palmas para testar.");
   const autostartSwitch = h("input", { type: "checkbox", disabled: true });
+  const autostartWindow = h("input", { type: "checkbox" });
   const autostartHint = h("span", { class: "hint" }, "verificando…");
   let claps = 0;
+  let serverVoice = null;
+  let devices = null;
+  let sapiVoices = null;
+  let downloadText = "";
 
-  function renderVoicePanel() {
+  async function refreshVoiceInfo() {
+    try { serverVoice = await api("/api/voice/status"); } catch { serverVoice = null; }
+    renderVoicePanel();
+  }
+  async function loadDevices() {
+    try { devices = await api("/api/voice/devices"); } catch (err) { devices = { error: err.message }; }
+    renderVoicePanel();
+  }
+  async function loadSapiVoices() {
+    try { sapiVoices = await api("/api/voice/voices"); } catch { sapiVoices = []; }
+    renderVoicePanel();
+  }
+  async function setServer(patch) {
+    try {
+      data.runtime = await api("/api/settings", { method: "PUT", body: patch });
+      Object.assign(draft, patch);
+      renderVoicePanel();
+      setTimeout(refreshVoiceInfo, 700);
+      refreshStatus().catch(() => {});
+    } catch (err) { toast(err.message, "bad", 7000); }
+  }
+  const post = (path, ok) => api(path, { method: "POST" }).then(() => ok && toast(ok, "good")).catch((err) => toast(err.message, "bad"));
+
+  function serverToggle(rt, key, label) {
+    const input = h("input", { type: "checkbox", checked: rt[key] });
+    input.addEventListener("change", () => setServer({ [key]: input.checked }));
+    return h("label", { class: "switch" }, input, label);
+  }
+  function serverRange(rt, key, min, max, step, label, fmtValue) {
+    const out = h("span", { class: "hint" }, fmtValue(rt[key]));
+    const input = h("input", { type: "range", min, max, step, value: rt[key] });
+    input.addEventListener("input", () => { out.textContent = fmtValue(Number(input.value)); });
+    input.addEventListener("change", () => setServer({ [key]: Number(input.value) }));
+    return h("label", { class: "field" }, h("span", {}, label, " ", out), input);
+  }
+  function serverSelect(rt, key, options, label) {
+    const select = h("select", {}, options.map(([value, text]) => h("option", { value, selected: rt[key] === value }, text)));
+    select.addEventListener("change", () => setServer({ [key]: select.value }));
+    return h("label", { class: "field" }, label, select);
+  }
+
+  function renderLocal(rt) {
+    const sv = serverVoice || {};
+    const models = sv.models || {};
+    const deviceOptions = [["", "Padrão do Windows"]];
+    if (Array.isArray(devices)) devices.forEach((d) => deviceOptions.push([d.name, `${d.name}${d.default ? " (padrão)" : ""}`]));
+    if (rt.voice_input_device && !deviceOptions.some(([v]) => v === rt.voice_input_device)) deviceOptions.push([rt.voice_input_device, rt.voice_input_device]);
+    const voiceOptions = [["", "Automática (português, se instalada)"], ...(sapiVoices || []).map((v) => [v, v])];
+    if (rt.voice_tts_voice && !voiceOptions.some(([v]) => v === rt.voice_tts_voice)) voiceOptions.push([rt.voice_tts_voice, rt.voice_tts_voice]);
+    return [
+      h("div", { class: "voice-status" },
+        h("span", { class: `tag ${sv.state === "error" ? "red" : sv.state === "idle" ? "green" : "cyan"}` }, `estado: ${sv.state || "…"}`),
+        h("span", { class: `tag ${models.vosk ? "green" : "amber"}` }, models.vosk ? "ativação: modelo ok" : "ativação: baixar modelo"),
+        h("span", { class: `tag ${models.whisper ? "green" : "amber"}` }, models.whisper ? `transcrição: ${models.whisper_size} ok` : `transcrição: baixar ${models.whisper_size || ""}`),
+        sv.speaker ? h("span", { class: "tag" }, `fala: ${sv.speaker}`) : null,
+        sv.device ? h("span", { class: "tag" }, `microfone: ${sv.device}`) : null),
+      sv.error ? h("div", { class: "alert-line" }, sv.error) : sv.detail ? h("p", { class: "hint" }, sv.detail) : null,
+      downloadText ? h("p", { class: "hint" }, downloadText) : null,
+      h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
+        h("button", { class: "btn", type: "button", onclick: () => post("/api/voice/models/download", "Download dos modelos iniciado.") }, "Baixar modelos"),
+        h("button", { class: "btn", type: "button", onclick: () => post("/api/voice/restart", "Reiniciando a voz…") }, "Reiniciar voz"),
+        h("button", { class: "btn", type: "button", onclick: () => post("/api/voice/activate") }, "Ativar agora"),
+        h("button", { class: "btn", type: "button", onclick: testVoice }, "Testar fala")),
+      h("div", { class: "levels" }, [["ambos", "Ambos", "Fala as respostas dos pedidos feitos por voz."], ["voz", "Voz", "Fala todas as respostas (inclusive digitadas)."]].map(([value, label, desc]) => h("button", {
+        type: "button", class: `level ${rt.voice_mode === value ? "on" : ""}`, onclick: () => setServer({ voice_mode: value }),
+      }, h("strong", {}, label), h("span", {}, desc)))),
+      h("div", { class: "form-grid" },
+        serverToggle(rt, "voice_wake", "Ativar com “Olá, Sexta-Feira”"),
+        serverToggle(rt, "voice_name_only", "Aceitar também “Sexta-Feira, …”"),
+        serverToggle(rt, "voice_claps", "Ativar com duas palmas"),
+        serverToggle(rt, "voice_speak_alerts", "Falar alertas e resumos")),
+      h("div", { class: "form-grid" },
+        h("div", { class: "field" }, serverRange(rt, "voice_clap_sensitivity", 0, 1, 0.05, "Sensibilidade das palmas", (v) => `${Math.round(v * 100)}%`), meter, clapInfo),
+        serverSelect(rt, "voice_input_device", deviceOptions, Array.isArray(devices) ? "Microfone" : `Microfone ${devices?.error ? "(indisponível)" : ""}`),
+        serverSelect(rt, "voice_tts_voice", voiceOptions, "Voz do Windows"),
+        serverRange(rt, "voice_tts_rate", -10, 10, 1, "Velocidade da fala", (v) => (v > 0 ? `+${v}` : `${v}`)),
+        serverSelect(rt, "voice_whisper_model", WHISPER, "Modelo de transcrição")),
+      h("p", { class: "hint" },
+        "Tudo roda no seu computador: o áudio não sai do PC — só o texto do pedido vai para a IA. ",
+        "Para a voz em português, instale no Windows: Configurações → Hora e idioma → Fala → Português (Brasil). ",
+        "Confirmações por voz valem apenas para ações não críticas."),
+    ];
+  }
+
+  function renderBrowser() {
     const vs = voice.settings;
     const set = (patch) => { saveVoiceSettings(patch); renderVoicePanel(); };
     const toggle = (key, label) => {
@@ -157,36 +263,44 @@ export function mount(root) {
       h("option", { value: "" }, "Automática (melhor voz em português)"),
       voices.map((v) => h("option", { value: v.voiceURI, selected: v.voiceURI === vs.voiceURI }, `${v.name} (${v.lang})`)));
     voiceSelect.addEventListener("change", () => saveVoiceSettings({ voiceURI: voiceSelect.value }));
+    return [
+      h("div", { class: "voice-status" },
+        h("span", { class: `tag ${voice.supported.recognition ? "green" : "red"}` }, voice.supported.recognition ? "reconhecimento de fala: ok" : "reconhecimento: use Chrome/Edge"),
+        h("span", { class: `tag ${voice.supported.claps ? "green" : "red"}` }, voice.supported.claps ? "palmas: ok" : "palmas: indisponível"),
+        h("span", { class: "tag cyan" }, `estado: ${voice.state}`)),
+      h("div", { class: "levels" }, VOICE_MODES.map(([value, label, desc]) => h("button", {
+        type: "button", class: `level ${vs.mode === value ? "on" : ""}`, onclick: () => set({ mode: value }),
+      }, h("strong", {}, label), h("span", {}, desc)))),
+      h("div", { class: "form-grid" },
+        toggle("wake", "Ativar com “Olá, Sexta-Feira”"),
+        toggle("nameOnly", "Aceitar também “Sexta-Feira, …”"),
+        toggle("claps", "Ativar com duas palmas")),
+      h("div", { class: "form-grid" },
+        h("div", { class: "field" }, range("clapSensitivity", 0, 1, 0.05, "Sensibilidade das palmas", (v) => `${Math.round(v * 100)}%`), meter, clapInfo),
+        h("label", { class: "field" }, "Voz do navegador", voiceSelect),
+        range("rate", 0.7, 1.5, 0.05, "Velocidade da fala", (v) => `${v.toFixed(2)}×`),
+        range("pitch", 0.5, 1.5, 0.05, "Tom da voz", (v) => v.toFixed(2))),
+      h("button", { class: "btn", type: "button", onclick: testVoice }, "Testar voz"),
+      h("p", { class: "hint" },
+        "O reconhecimento de fala do navegador envia o áudio ao Google (Chrome) ou à Microsoft (Edge) enquanto escuta. ",
+        "Prefira o motor “Local no PC” para privacidade total."),
+    ];
+  }
 
-    fill(voicePanel,
-      h("div", { class: "panel-head" }, "Voz e ativação"),
-      h("div", { class: "panel-body" },
-        h("div", { class: "voice-status" },
-          h("span", { class: `tag ${voice.supported.recognition ? "green" : "red"}` }, voice.supported.recognition ? "reconhecimento de fala: ok" : "reconhecimento de fala: use Chrome/Edge"),
-          h("span", { class: `tag ${voice.supported.claps ? "green" : "red"}` }, voice.supported.claps ? "palmas: ok" : "palmas: indisponível"),
-          h("span", { class: `tag ${voice.supported.synthesis ? "green" : "red"}` }, voice.supported.synthesis ? `vozes: ${voices.length}` : "fala: indisponível"),
-          h("span", { class: "tag cyan" }, `estado: ${voice.state}`),
-          voice.error ? h("span", { class: "tag red", title: voice.error }, "erro de microfone") : null),
-        h("div", { class: "levels" }, VOICE_MODES.map(([value, label, desc]) => h("button", {
-          type: "button", class: `level ${vs.mode === value ? "on" : ""}`, onclick: () => set({ mode: value }),
-        }, h("strong", {}, label), h("span", {}, desc)))),
-        h("div", { class: "form-grid" },
-          toggle("wake", "Ativar com “Olá, Sexta-Feira”"),
-          toggle("nameOnly", "Aceitar também “Sexta-Feira, …” (sem saudação)"),
-          toggle("claps", "Ativar com duas palmas")),
-        h("div", { class: "form-grid" },
-          h("div", { class: "field" }, range("clapSensitivity", 0, 1, 0.05, "Sensibilidade das palmas", (v) => `${Math.round(v * 100)}%`), meter, clapInfo),
-          h("label", { class: "field" }, "Voz da assistente", voiceSelect),
-          range("rate", 0.7, 1.5, 0.05, "Velocidade da fala", (v) => `${v.toFixed(2)}×`),
-          range("pitch", 0.5, 1.5, 0.05, "Tom da voz", (v) => v.toFixed(2))),
-        h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
-          h("button", { class: "btn", type: "button", onclick: testVoice }, "Testar voz"),
-          h("label", { class: "switch" }, autostartSwitch, "Iniciar com o Windows (abre a janela de voz ao ligar o PC)"),
-          autostartHint),
-        h("p", { class: "hint" },
-          "Privacidade: as palmas são detectadas no seu computador. Já o reconhecimento de fala do navegador envia o áudio ao serviço do Google (Chrome) ou da Microsoft (Edge) enquanto escuta. ",
-          "Para enviar áudio só depois de ativar, desligue “Olá, Sexta-Feira” e use as palmas ou o botão do microfone. ",
-          "Confirmações por voz valem apenas para ações não críticas.")));
+  function renderVoicePanel() {
+    const rt = data?.runtime;
+    const head = h("div", { class: "panel-head" }, "Voz e ativação");
+    if (!rt) return fill(voicePanel, head, h("div", { class: "panel-body" }, h("p", { class: "hint" }, "Carregando…")));
+    const engine = rt.voice_engine;
+    return fill(voicePanel, head, h("div", { class: "panel-body" },
+      h("div", { class: "levels" }, ENGINES.map(([value, label, desc]) => h("button", {
+        type: "button", class: `level ${engine === value ? "on" : ""}`, onclick: () => setServer({ voice_engine: value }),
+      }, h("strong", {}, label), h("span", {}, desc)))),
+      engine === "local" ? renderLocal(rt) : engine === "navegador" ? renderBrowser() : h("p", { class: "hint" }, "A voz está desligada."),
+      h("div", { style: { display: "flex", gap: "14px", flexWrap: "wrap", alignItems: "center" } },
+        h("label", { class: "switch" }, autostartSwitch, "Iniciar com o Windows"),
+        h("label", { class: "switch" }, autostartWindow, "Abrir a interface ao ligar"),
+        autostartHint)));
   }
 
   async function loadAutostart() {
@@ -194,17 +308,21 @@ export function mount(root) {
       const status = await api("/api/system/autostart");
       autostartSwitch.checked = Boolean(status.enabled);
       autostartSwitch.disabled = !status.supported;
+      autostartWindow.checked = Boolean(status.window);
+      autostartWindow.disabled = !status.supported;
       autostartHint.textContent = !status.supported ? "disponível só no Windows"
         : status.enabled && !status.up_to_date ? "desatualizado — desligue e ligue de novo" : "";
     } catch (err) { autostartHint.textContent = err.message; }
   }
-  autostartSwitch.addEventListener("change", async () => {
+  async function changeAutostart() {
     try {
-      await api("/api/system/autostart", { method: "PUT", body: { enabled: autostartSwitch.checked } });
+      await api("/api/system/autostart", { method: "PUT", body: { enabled: autostartSwitch.checked, window: autostartWindow.checked } });
       toast(autostartSwitch.checked ? "A Sexta-Feira vai iniciar com o Windows." : "Início automático desligado.", "good");
     } catch (err) { toast(err.message, "bad"); }
     loadAutostart();
-  });
+  }
+  autostartSwitch.addEventListener("change", changeAutostart);
+  autostartWindow.addEventListener("change", () => { if (autostartSwitch.checked) changeAutostart(); });
 
   const offLevel = on("voice-level", (lvl) => {
     meterFill.style.width = `${Math.min(100, Math.sqrt(lvl.peak) * 100)}%`;
@@ -217,13 +335,21 @@ export function mount(root) {
     setTimeout(() => meter.classList.remove("flash"), 250);
   });
   const offDouble = on("voice-double-clap", () => { clapInfo.textContent = `Palmas detectadas: ${claps} — ativação! ✔`; });
-  const offVoices = on("voice-voices", renderVoicePanel);
-  const offState = on("voice-state", renderVoicePanel);
+  const offVoices = on("voice-voices", () => { if (data?.runtime?.voice_engine === "navegador") renderVoicePanel(); });
+  let stateTimer = null;
+  const offState = on("voice-state", () => { clearTimeout(stateTimer); stateTimer = setTimeout(refreshVoiceInfo, 300); });
+  const offLive = on("live", (ev) => {
+    if (ev.type !== "voice_download") return;
+    if (ev.error) downloadText = `Falha no download: ${ev.error}`;
+    else if (ev.done) downloadText = "Modelos prontos ✔";
+    else downloadText = `Baixando ${ev.model}: ${Math.round((ev.progress || 0) * 100)}%`;
+    renderVoicePanel();
+  });
 
   renderVoicePanel();
   loadAutostart();
-  load();
-  return () => { offLevel(); offClap(); offDouble(); offVoices(); offState(); };
+  load().then(() => { refreshVoiceInfo(); loadDevices(); loadSapiVoices(); });
+  return () => { offLevel(); offClap(); offDouble(); offVoices(); offState(); offLive(); clearTimeout(stateTimer); };
 }
 
 const RISK_ORDER = ["safe", "read", "write", "exec", "critical"];

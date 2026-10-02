@@ -304,6 +304,7 @@ export function mount(root) {
       if (!current || m.task_id !== currentTask) {
         current = new AssistantView();
         currentTask = m.task_id;
+        current.el.dataset.task = m.task_id || "";
         current.meta.append(h("span", { class: "tag cyan" }, m.model || ""), h("span", { class: "tag" }, fmt.time(m.created_at)));
         inner.append(current.el);
       }
@@ -421,6 +422,11 @@ export function mount(root) {
       toast(ev.message, "bad");
       return;
     }
+    if (ev.type === "voice_command") {
+      // Pedido feito pela voz local (no PC): mostra na conversa certa.
+      showVoiceCommand(ev);
+      return;
+    }
     if (ev.type === "conversation_created" || ev.type === "task_done") refreshList();
     if (ev.type === "task_started" || ev.type === "task_done") { renderList(); updateStopButton(); }
     if (!ev.task_id) return;
@@ -439,6 +445,19 @@ export function mount(root) {
       setTimeout(() => buffered.delete(ev.task_id), 60000);
     }
   });
+
+  async function showVoiceCommand(ev) {
+    if (views.has(ev.task_id)) return;
+    if (ev.conversation_id !== convId) {
+      await openConversation(ev.conversation_id);
+      refreshList();
+      const already = [...inner.querySelectorAll(".msg.user .bubble")].some((b) => b.textContent.includes(ev.text));
+      if (!already) inner.append(userBubble(ev.text, true));
+    } else {
+      inner.append(userBubble(ev.text, true));
+    }
+    if (!views.has(ev.task_id) && !inner.querySelector(`[data-task="${CSS.escape(ev.task_id)}"]`)) attachView(ev.task_id);
+  }
 
   const offVoice = on("voice-command", consumeVoiceCommand);
   const offVoiceState = on("voice-state", (vs) => {

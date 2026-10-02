@@ -31,8 +31,10 @@ class FakeRunKey:
 def test_autostart_command_is_hidden_and_quoted():
     command = winsys.autostart_command(Path("C:/Users/Fulano de Tal/i.a"))
     assert "-m sexta serve" in command
-    assert "--app-window" in command and "--headless" in command
+    assert "--headless" in command and "--no-browser" in command  # voz local: sem janela
     assert '"C:/Users/Fulano de Tal/i.a"' in command  # caminho com espaço entre aspas
+    with_window = winsys.autostart_command(Path("C:/proj"), window=True)
+    assert "--app-window" in with_window and "--no-browser" not in with_window
 
 
 def test_autostart_manager_enable_disable():
@@ -41,8 +43,9 @@ def test_autostart_manager_enable_disable():
     assert manager.supported
     assert manager.status()["enabled"] is False
     status = manager.enable()
-    assert status["enabled"] and status["up_to_date"]
+    assert status["enabled"] and status["up_to_date"] and not status["window"]
     assert key.values[winsys.VALUE_NAME] == winsys.autostart_command(Path("C:/proj"))
+    assert manager.enable(window=True)["window"] is True
     key.values[winsys.VALUE_NAME] = "comando antigo"
     assert manager.status()["up_to_date"] is False
     assert manager.disable()["enabled"] is False

@@ -73,6 +73,7 @@ def settings(tmp_path) -> Settings:
         access_token=TOKEN,
         approval_timeout_s=5,
         daily_budget_usd=5.0,
+        background_services=False,
     )
 
 

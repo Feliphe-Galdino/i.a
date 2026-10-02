@@ -58,12 +58,18 @@ def pythonw_executable() -> Path:
     return candidate if candidate.exists() else exe
 
 
-def serve_command(workdir: Path) -> list[str]:
-    return [str(pythonw_executable()), "-m", "sexta", "serve", "--app-window", "--headless", "--workdir", str(workdir)]
+def serve_command(workdir: Path, *, window: bool = True) -> list[str]:
+    cmd = [str(pythonw_executable()), "-m", "sexta", "serve", "--headless", "--workdir", str(workdir)]
+    if window:
+        cmd.insert(4, "--app-window")
+    else:
+        cmd.insert(4, "--no-browser")
+    return cmd
 
 
-def autostart_command(workdir: Path) -> str:
-    return subprocess.list2cmdline(serve_command(workdir))
+def autostart_command(workdir: Path, *, window: bool = False) -> str:
+    """Por padrão, sobe só o servidor (a voz local não precisa de janela)."""
+    return subprocess.list2cmdline(serve_command(workdir, window=window))
 
 
 # --------------------------------------------------------------------------
@@ -119,19 +125,21 @@ class AutostartManager:
         return self.run_key is not None
 
     def status(self) -> dict[str, object]:
-        expected = autostart_command(self.workdir)
         current = self.run_key.get(VALUE_NAME) if self.run_key else None
+        window = bool(current and "--app-window" in current)
+        expected = autostart_command(self.workdir, window=window)
         return {
             "supported": self.supported,
             "enabled": current is not None,
+            "window": window,
             "up_to_date": current == expected,
-            "command": expected,
+            "command": current or expected,
         }
 
-    def enable(self) -> dict[str, object]:
+    def enable(self, *, window: bool = False) -> dict[str, object]:
         if not self.run_key:
             raise RuntimeError("Iniciar com o sistema está disponível apenas no Windows.")
-        self.run_key.set(VALUE_NAME, autostart_command(self.workdir))
+        self.run_key.set(VALUE_NAME, autostart_command(self.workdir, window=window))
         return self.status()
 
     def disable(self) -> dict[str, object]:

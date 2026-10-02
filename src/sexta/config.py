@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     tool_timeout_s: float = 60.0
     approval_timeout_s: float = 300.0
     max_tool_output_chars: int = 20_000
+    # Serviços em segundo plano (voz local, agendador de notícias/alertas). Desligado nos testes.
+    background_services: bool = True
 
     # ------------------------------------------------------------------------
     @property
@@ -78,6 +80,10 @@ class Settings(BaseSettings):
     @property
     def browser_profile_dir(self) -> Path:
         return self.data_dir / "navegador"
+
+    @property
+    def models_dir(self) -> Path:
+        return self.data_dir / "modelos"
 
     @property
     def extra_roots(self) -> list[Path]:

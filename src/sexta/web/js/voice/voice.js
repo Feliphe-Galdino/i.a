@@ -11,7 +11,7 @@
 // Google (Chrome) ou da Microsoft (Edge) enquanto escuta. Com "Olá, Sexta-Feira"
 // desligado, o reconhecimento só liga DEPOIS das palmas ou do botão.
 
-import { live, urlFlags } from "../api.js";
+import { api, live, urlFlags } from "../api.js";
 import { answerApproval } from "../approvals.js";
 import { emit, on, state } from "../state.js";
 import { toast } from "../ui.js";
@@ -60,6 +60,9 @@ let listenTimer = null;
 let awaitingApproval = null;
 let approvalRetries = 0;
 let speakDoneTimer = null;
+// Quando o motor de voz LOCAL (no PC, em Python) está ativo, o navegador não escuta:
+// só espelha o estado e encaminha o botão do microfone para o servidor.
+let proxy = false;
 
 // ---------------------------------------------------------------------------
 // Configurações (por navegador/janela)
@@ -95,10 +98,17 @@ export const isVoiceEnabled = () => voice.settings.mode !== "texto";
 
 const STATE_LABEL = {
   off: "Voz desligada",
+  starting: "Preparando a voz…",
   idle: "Aguardando: “Olá, Sexta-Feira” ou duas palmas",
   listening: "Ouvindo…",
+  transcribing: "Entendendo…",
   thinking: "Pensando…",
   speaking: "Falando…",
+  error: "Voz com problema",
+};
+const BUTTON_LABEL = {
+  off: "Voz", starting: "Iniciando", idle: "Pronta", listening: "Ouvindo", transcribing: "Entendendo",
+  thinking: "Pensando", speaking: "Falando", error: "Voz",
 };
 
 function setState(next) {
@@ -120,12 +130,13 @@ function renderUI() {
   const overlay = document.getElementById("voice-overlay");
   if (btn) {
     btn.dataset.state = voice.state;
-    btn.title = voice.error ? `${STATE_LABEL[voice.state]} — ${voice.error}` : STATE_LABEL[voice.state];
+    const where = proxy ? " (no PC)" : "";
+    btn.title = voice.error ? `${STATE_LABEL[voice.state]} — ${voice.error}` : `${STATE_LABEL[voice.state] || voice.state}${where}`;
     btn.classList.toggle("has-error", Boolean(voice.error));
-    btn.querySelector(".label").textContent = { off: "Voz", idle: "Pronta", listening: "Ouvindo", thinking: "Pensando", speaking: "Falando" }[voice.state];
+    btn.querySelector(".label").textContent = BUTTON_LABEL[voice.state] || "Voz";
   }
   if (overlay) {
-    const visible = ["listening", "thinking", "speaking"].includes(voice.state);
+    const visible = ["listening", "transcribing", "thinking", "speaking"].includes(voice.state);
     overlay.classList.toggle("hidden", !visible);
     overlay.dataset.state = voice.state;
     overlay.querySelector(".state").textContent = awaitingApproval && voice.state === "listening" ? "Diga “sim” ou “não”…" : STATE_LABEL[voice.state];
@@ -154,10 +165,13 @@ export function initVoice() {
   window.addEventListener("pointerdown", unlock);
   window.addEventListener("keydown", unlock);
   on("live", onLiveEvent);
-  on("voice-failed", (message) => say(`Não consegui enviar o pedido. ${message || ""}`));
+  on("live", onServerVoiceEvent);
+  on("voice-failed", (message) => { if (!proxy) say(`Não consegui enviar o pedido. ${message || ""}`); });
+  on("status", (status) => applyServerVoice(status?.voice));
   if (synth) synth.onvoiceschanged = () => emit("voice-voices", listVoices());
   renderUI();
-  if (isVoiceEnabled()) start();
+  applyServerVoice(state.status?.voice);
+  if (!proxy && isVoiceEnabled() && serverEngine !== "desligado") start();
   // Ferramentas para o console do navegador (F12) e testes automatizados.
   window.sextaVoice = { voice, activate, say, simulateSpeech: (text, isFinal = true) => onResult(text, isFinal) };
 }
@@ -182,10 +196,59 @@ function stop() {
 }
 
 function onButton() {
+  if (proxy) {
+    if (voice.state === "speaking") return api("/api/voice/stop", { method: "POST" }).catch(() => {});
+    if (voice.state === "error" || voice.state === "off") {
+      location.hash = "#/config";
+      return null;
+    }
+    return api("/api/voice/activate", { method: "POST" }).catch((err) => toast(err.message, "bad"));
+  }
   if (voice.state === "off") return saveVoiceSettings({ mode: voice.settings.mode === "texto" ? "ambos" : voice.settings.mode });
   if (voice.state === "speaking") return stopSpeaking();
   if (voice.state === "listening") return deactivate();
   activate("botão");
+}
+
+// ---------------------------------------------------------------------------
+// Motor local (servidor): espelho do estado
+// ---------------------------------------------------------------------------
+
+let serverEngine = "";
+
+export const isLocalEngine = () => proxy;
+
+function applyServerVoice(info) {
+  if (!info) return;
+  serverEngine = info.engine;
+  const wantProxy = info.engine === "local";
+  if (wantProxy && !proxy) {
+    if (voice.state !== "off") stop();
+    proxy = true;
+  } else if (!wantProxy && proxy) {
+    proxy = false;
+    voice.state = "off";
+    if (isVoiceEnabled() && info.engine === "navegador") start();
+  }
+  if (proxy) mirror(info.state, info.error, voice.transcript);
+}
+
+function mirror(nextState, error = "", transcript = "") {
+  const changed = voice.state !== nextState;
+  voice.state = nextState;
+  voice.error = error || "";
+  voice.transcript = transcript || "";
+  renderUI();
+  if (changed) emit("voice-state", nextState);
+}
+
+function onServerVoiceEvent(ev) {
+  if (!proxy) return;
+  if (ev.type === "voice_state") mirror(ev.state, ev.error, ev.transcript);
+  else if (ev.type === "voice_transcript") { voice.transcript = ev.text; renderUI(); }
+  else if (ev.type === "voice_level") emit("voice-level", { peak: ev.peak, threshold: ev.threshold });
+  else if (ev.type === "voice_clap") emit("voice-clap", ev);
+  else if (ev.type === "voice_double_clap") emit("voice-double-clap", ev);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +352,7 @@ function cancelRunningTasks() {
 // ---------------------------------------------------------------------------
 
 function onLiveEvent(ev) {
-  if (!isVoiceEnabled()) return;
+  if (proxy || !isVoiceEnabled()) return;
   if (ev.type === "task_done") {
     const shouldSpeak = voice.settings.mode === "voz" || ev.channel === "voz";
     if (!shouldSpeak) {
@@ -534,6 +597,11 @@ export function stopSpeaking(toIdle = true) {
 
 /** Testa a voz atual (usado nas Configurações). */
 export function testVoice() {
+  if (proxy) {
+    api("/api/voice/say", { method: "POST", body: { text: "Olá! Eu sou a Sexta-Feira, falando direto do seu computador." } })
+      .catch((err) => toast(err.message, "bad"));
+    return;
+  }
   if (voice.state === "off") {
     if (!synth) return;
     const u = new SpeechSynthesisUtterance("Olá! Eu sou a Sexta-Feira. Ative a voz para conversar comigo.");

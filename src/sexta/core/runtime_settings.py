@@ -33,10 +33,52 @@ class RuntimeSettings(BaseModel):
     tier_models: dict[str, str] = Field(default_factory=dict)
     custom_instructions: str = Field(default="", max_length=4000)
 
+    # --- Voz local (no PC) ---------------------------------------------------
+    voice_engine: Literal["local", "navegador", "desligado"] = "local"
+    voice_mode: Literal["ambos", "voz"] = "ambos"
+    voice_wake: bool = True
+    voice_name_only: bool = False
+    voice_claps: bool = True
+    voice_clap_sensitivity: float = Field(default=0.5, ge=0, le=1)
+    voice_input_device: str = ""
+    voice_tts_voice: str = ""
+    voice_tts_rate: int = Field(default=1, ge=-10, le=10)
+    voice_whisper_model: Literal["base", "small", "medium", "large-v3-turbo"] = "small"
+    voice_speak_alerts: bool = True
+
+    # --- Informações: notícias, mercado, clima, resumos ---------------------------
+    intel_enabled: bool = True
+    city: str = Field(default="", max_length=80)
+    watchlist: list[str] = Field(default_factory=lambda: ["IBOV", "USD", "EUR", "BTC", "PETR4", "VALE3", "ITUB4"])
+    news_topics: list[str] = Field(default_factory=lambda: ["brasil", "mundo", "economia", "tecnologia"])
+    briefing_enabled: bool = True
+    briefing_times: list[str] = Field(default_factory=lambda: ["08:00"])
+
     @field_validator("permission_overrides")
     @classmethod
     def _known_capabilities(cls, value: dict[str, str]) -> dict[str, str]:
         return {k: v for k, v in value.items() if k in CAPABILITIES}
+
+    @field_validator("briefing_times")
+    @classmethod
+    def _valid_times(cls, value: list[str]) -> list[str]:
+        out = []
+        for item in value:
+            item = item.strip()
+            parts = item.split(":")
+            if len(parts) != 2 or not all(p.isdigit() for p in parts):
+                raise ValueError(f"horário inválido: {item!r} (use HH:MM)")
+            hour, minute = int(parts[0]), int(parts[1])
+            if not (0 <= hour < 24 and 0 <= minute < 60):
+                raise ValueError(f"horário inválido: {item!r}")
+            out.append(f"{hour:02d}:{minute:02d}")
+        return sorted(set(out))[:6]
+
+    @field_validator("watchlist", "news_topics")
+    @classmethod
+    def _short_lists(cls, value: list[str]) -> list[str]:
+        cleaned = [v.strip() for v in value if v and v.strip()]
+        return list(dict.fromkeys(cleaned))[:25]
 
     @field_validator("tier_models")
     @classmethod

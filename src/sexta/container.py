@@ -28,6 +28,8 @@ from .security.guards import SecretRedactor
 from .tools import build_default_registry
 from .tools.base import ToolRegistry
 from .tools.executor import ToolExecutor
+from .voice.engine import VoiceEngine
+from .voice.models import ModelStore
 from .winsys import AutostartManager, RunKey
 
 
@@ -49,8 +51,11 @@ class Sexta:
     provider: LLMProvider
     orchestrator: Orchestrator
     autostart: AutostartManager
+    models: ModelStore
+    voice: VoiceEngine
 
     def close(self) -> None:
+        self.voice.shutdown()
         self.db.close()
 
 
@@ -60,6 +65,7 @@ def build_sexta(
     provider: LLMProvider | None = None,
     registry: ToolRegistry | None = None,
     run_key: RunKey | None = None,
+    voice_factories: dict | None = None,
 ) -> Sexta:
     settings = settings or Settings()
     settings.ensure_dirs()
@@ -93,6 +99,7 @@ def build_sexta(
         }
     )
     provider = provider or build_provider(settings)
+    models = ModelStore(settings.models_dir)
     orchestrator = Orchestrator(
         settings=settings,
         runtime=runtime,
@@ -124,4 +131,14 @@ def build_sexta(
         provider=provider,
         orchestrator=orchestrator,
         autostart=AutostartManager(Path.cwd(), run_key),
+        models=models,
+        voice=VoiceEngine(
+            runtime=runtime,
+            orchestrator=orchestrator,
+            bus=bus,
+            approvals=approvals,
+            tasks=tasks,
+            models=models,
+            **(voice_factories or {}),
+        ),
     )

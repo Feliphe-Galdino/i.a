@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .api import routes, ws
+from .api import routes, voice_routes, ws
 from .config import Settings
 from .container import Sexta, build_sexta
 from .llm.base import LLMProvider
@@ -32,6 +32,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if sexta.settings.background_services:
+            sexta.voice.start(asyncio.get_running_loop())
         yield
         running = [t for t in (sexta.tasks.task(i) for i in sexta.tasks.running_ids()) if t]
         sexta.tasks.cancel_all()
@@ -69,6 +71,7 @@ def create_app(
         return {"status": "ok", "name": "Sexta-Feira", "version": __version__}
 
     app.include_router(routes.router)
+    app.include_router(voice_routes.router)
     app.include_router(ws.router)
 
     @app.exception_handler(Exception)

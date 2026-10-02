@@ -36,6 +36,7 @@ async def status(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
         "spent_today_usd": round(spent, 4),
         "daily_budget_usd": runtime.daily_budget_usd,
         "memory": sexta.memory.stats(),
+        "voice": sexta.voice.status(),
         "system": await asyncio.to_thread(system_snapshot, str(sexta.settings.workspace_dir)),
     }
 
@@ -311,12 +312,17 @@ def get_settings(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
 
 @router.put("/settings")
 def update_settings(changes: dict[str, Any], sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
+    before = sexta.runtime.get().model_dump()
     try:
         updated = sexta.runtime.update(changes)
     except ValueError as exc:
         raise HTTPException(400, f"Configuração inválida: {exc}") from exc
-    sexta.audit.record("settings_changed", detail={"changes": changes})
-    return updated.model_dump()
+    after = updated.model_dump()
+    changed = {key for key in after if after[key] != before.get(key)}
+    sexta.audit.record("settings_changed", detail={"changes": {k: after[k] for k in changed}})
+    if sexta.voice.loop is not None:
+        sexta.voice.apply_settings(changed)
+    return after
 
 
 # --- Sistema (Windows) ---------------------------------------------------------
@@ -329,13 +335,14 @@ def autostart_status(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
 
 class AutostartIn(BaseModel):
     enabled: bool
+    window: bool = False
 
 
 @router.put("/system/autostart")
 def set_autostart(body: AutostartIn, sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
     if not sexta.autostart.supported:
         raise HTTPException(400, "Iniciar com o sistema está disponível apenas no Windows.")
-    status = sexta.autostart.enable() if body.enabled else sexta.autostart.disable()
+    status = sexta.autostart.enable(window=body.window) if body.enabled else sexta.autostart.disable()
     sexta.audit.record("autostart_changed", detail={"enabled": body.enabled})
     return status
 

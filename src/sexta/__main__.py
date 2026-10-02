@@ -3,8 +3,11 @@
 sexta serve              inicia o servidor e abre a interface no navegador
 sexta open               abre a janela da assistente (sobe o servidor se preciso)
 sexta stop               encerra o servidor que roda em segundo plano
-sexta autostart on|off   liga/desliga "iniciar com o Windows"
+sexta autostart on|off   liga/desliga "iniciar com o Windows" (--janela abre a interface também)
 sexta autostart status   mostra se está ligado
+sexta voz instalar       baixa os modelos de voz (ativação + transcrição)
+sexta voz dispositivos   lista os microfones
+sexta voz testar         grava 5 s, transcreve e repete em voz alta
 sexta token              mostra o token de acesso
 sexta doctor             verifica a instalação e a configuração
 """
@@ -150,8 +153,9 @@ def cmd_autostart(args: argparse.Namespace) -> int:
         print("Iniciar com o sistema está disponível apenas no Windows.")
         return 1
     if args.action == "on":
-        status = manager.enable()
-        print("✔ A Sexta-Feira vai iniciar junto com o Windows (e abrir a janela de voz).")
+        status = manager.enable(window=args.janela)
+        extra = " e abrir a interface" if args.janela else " (voz local, sem janela)"
+        print(f"✔ A Sexta-Feira vai iniciar junto com o Windows{extra}.")
     elif args.action == "off":
         status = manager.disable()
         print("✔ Início automático desligado.")
@@ -161,6 +165,86 @@ def cmd_autostart(args: argparse.Namespace) -> int:
         if status["enabled"] and not status["up_to_date"]:
             print("  ⚠ O comando registrado está desatualizado. Rode `sexta autostart on` de novo nesta pasta.")
     print(f"Comando: {status['command']}")
+    return 0
+
+
+def _runtime(settings: Settings):
+    from .core.runtime_settings import RuntimeSettingsStore
+    from .memory.db import Database
+
+    db = Database(settings.db_path)
+    try:
+        return RuntimeSettingsStore(db, settings).get()
+    finally:
+        db.close()
+
+
+def cmd_voice(args: argparse.Namespace) -> int:
+    from .voice.audio import VoiceDependencyError, list_input_devices
+    from .voice.models import ModelStore
+
+    settings = Settings()
+    settings.ensure_dirs()
+    runtime = _runtime(settings)
+    size = args.modelo or runtime.voice_whisper_model
+    store = ModelStore(settings.models_dir)
+
+    if args.acao == "dispositivos":
+        try:
+            devices = list_input_devices()
+        except VoiceDependencyError as exc:
+            print(exc)
+            return 1
+        for dev in devices:
+            mark = " (padrão)" if dev["default"] else ""
+            print(f"  [{dev['index']}] {dev['name']} — {dev['hostapi']}{mark}")
+        print("\nPara escolher, use Configurações → Voz → Microfone (ou deixe o padrão do Windows).")
+        return 0
+
+    if args.acao == "instalar":
+
+        def progress(what: str, fraction: float) -> None:
+            print(f"\r  {what}: {fraction * 100:5.1f}%", end="", flush=True)
+
+        try:
+            print("Baixando o modelo de ativação (Vosk pt, ~31 MB)…")
+            store.download_vosk(progress)
+            print(f"\nBaixando o modelo de transcrição Whisper '{size}' (pode levar alguns minutos)…")
+            store.download_whisper(size, progress)
+        except Exception as exc:  # noqa: BLE001
+            print(f"\nFalha no download: {exc}")
+            return 1
+        print(f"\n✔ Modelos prontos em {store.base}")
+        return 0
+
+    # testar: grava, transcreve e repete
+    try:
+        import sounddevice as sd  # type: ignore[import-not-found]
+
+        from .voice.audio import Tones
+        from .voice.dsp import rms
+        from .voice.recognition import WhisperTranscriber
+        from .voice.tts import build_speaker
+    except (ImportError, OSError) as exc:
+        print(f'Recursos de voz não instalados: {exc}\nRode: pip install -e ".[voz]"')
+        return 1
+    if not store.whisper_ready(size):
+        print("Modelo de transcrição ausente. Rode primeiro: sexta voz instalar")
+        return 1
+    print("🎙 Fale algo depois do bipe (5 segundos)…")
+    Tones().play("on")
+    recording = sd.rec(5 * 16_000, samplerate=16_000, channels=1, dtype="float32")
+    sd.wait()
+    audio = recording[:, 0]
+    print(f"Nível médio do microfone: {rms(audio):.4f} (silêncio ≈ 0,001–0,005; fala ≈ 0,02–0,2)")
+    print("Transcrevendo…")
+    text = WhisperTranscriber(store.whisper_dir(size)).transcribe(audio)
+    print(f"Você disse: {text or '(nada reconhecido)'}")
+    speaker = build_speaker(voice=runtime.voice_tts_voice, rate=runtime.voice_tts_rate)
+    done = threading.Event()
+    speaker.say(f"Você disse: {text}" if text else "Não entendi. Tente falar mais perto do microfone.", done.set)
+    done.wait(30)
+    speaker.close()
     return 0
 
 
@@ -252,7 +336,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("stop", help="encerra o servidor em segundo plano").set_defaults(func=cmd_stop)
     auto = sub.add_parser("autostart", help="iniciar com o Windows")
     auto.add_argument("action", choices=["on", "off", "status"])
+    auto.add_argument("--janela", action="store_true", help="abrir também a janela da interface ao ligar")
     auto.set_defaults(func=cmd_autostart)
+    voz = sub.add_parser("voz", help="voz local (microfone do PC)")
+    voz.add_argument("acao", choices=["instalar", "dispositivos", "testar"])
+    voz.add_argument("--modelo", choices=["base", "small", "medium", "large-v3-turbo"], help="modelo de transcrição")
+    voz.set_defaults(func=cmd_voice)
     sub.add_parser("token", help="mostra o token de acesso").set_defaults(func=cmd_token)
     sub.add_parser("doctor", help="verifica a instalação").set_defaults(func=cmd_doctor)
     return parser
