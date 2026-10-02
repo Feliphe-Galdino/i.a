@@ -342,6 +342,18 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
             required=False,
         )
     try:
+        import playwright  # noqa: F401
+
+        web = True
+    except ImportError:
+        web = False
+    check(
+        "Automação de sites (Playwright)",
+        web,
+        'Opcional: pip install -e ".[web]" (no Windows usa o Edge já instalado)',
+        required=False,
+    )
+    try:
         import fastembed  # noqa: F401
 
         semantic = True

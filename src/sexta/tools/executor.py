@@ -65,6 +65,14 @@ class ToolExecutor:
                 }
             )
             result: dict[str, Any] = {"type": "tool_result", "tool_use_id": tool_use_id, "content": content}
+            if output.images:
+                result["content"] = [
+                    {"type": "text", "text": content},
+                    *(
+                        {"type": "image", "source": {"type": "base64", "media_type": media, "data": data}}
+                        for media, data in output.images[:3]
+                    ),
+                ]
             if output.is_error:
                 result["is_error"] = True
             return result

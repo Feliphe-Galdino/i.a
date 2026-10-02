@@ -65,6 +65,8 @@ class ToolOutput:
     content: str
     is_error: bool = False
     data: Any = None
+    # Imagens para a IA ver (ex.: captura de tela do navegador): [(media_type, base64)]
+    images: list[tuple[str, str]] = field(default_factory=list)
 
 
 Handler = Callable[[Any, ToolContext], Awaitable["ToolOutput | str | dict[str, Any] | list[Any]"]]

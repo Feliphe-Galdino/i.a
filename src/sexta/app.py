@@ -39,6 +39,7 @@ def create_app(
             sexta.scheduler.start(loop)
         yield
         sexta.scheduler.stop()
+        await asyncio.to_thread(sexta.browser.shutdown)
         await sexta.intel.http.aclose()
         running = [t for t in (sexta.tasks.task(i) for i in sexta.tasks.running_ids()) if t]
         sexta.tasks.cancel_all()

@@ -6,10 +6,17 @@ from .base import Tool, ToolContext, ToolOutput, ToolRegistry
 
 
 def build_default_registry() -> ToolRegistry:
-    from . import agent_tools, fs_tools, intel_tools, memory_tools, system_tools
+    from . import agent_tools, browser_tools, fs_tools, intel_tools, memory_tools, system_tools
 
     return ToolRegistry(
-        [*memory_tools.TOOLS, *fs_tools.TOOLS, *system_tools.TOOLS, *intel_tools.TOOLS, *agent_tools.TOOLS]
+        [
+            *memory_tools.TOOLS,
+            *fs_tools.TOOLS,
+            *system_tools.TOOLS,
+            *intel_tools.TOOLS,
+            *agent_tools.TOOLS,
+            *browser_tools.TOOLS,
+        ]
     )
 
 

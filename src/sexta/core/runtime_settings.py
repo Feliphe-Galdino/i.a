@@ -49,6 +49,7 @@ class RuntimeSettings(BaseModel):
     # --- Informações: notícias, mercado, clima, resumos ---------------------------
     intel_enabled: bool = True
     semantic_memory: bool = True
+    browser_headless: bool = False  # False = janela do navegador visível enquanto a IA trabalha
     city: str = Field(default="", max_length=80)
     watchlist: list[str] = Field(default_factory=lambda: ["IBOV", "USD", "EUR", "BTC", "PETR4", "VALE3", "ITUB4"])
     news_topics: list[str] = Field(default_factory=lambda: ["brasil", "mundo", "economia", "tecnologia"])

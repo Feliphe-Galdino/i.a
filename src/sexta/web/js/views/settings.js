@@ -97,7 +97,9 @@ export function mount(root) {
       h("div", { class: "form-grid" },
         h("label", { class: "field" }, "Orçamento diário (US$)", bind("daily_budget_usd", h("input", { type: "number", min: 0, step: 0.5, value: rt.daily_budget_usd }), Number)),
         h("label", { class: "switch" }, bind("budget_hard_stop", h("input", { type: "checkbox", checked: rt.budget_hard_stop })), "Bloquear chamadas ao atingir o orçamento"),
-        h("label", { class: "switch" }, bind("web_search", h("input", { type: "checkbox", checked: rt.web_search })), "Permitir pesquisa na internet (US$ 0,01 por busca)")),
+        h("label", { class: "switch" }, bind("web_search", h("input", { type: "checkbox", checked: rt.web_search })), "Permitir pesquisa na internet (US$ 0,01 por busca)"),
+        h("label", { class: "switch", title: "Quando a IA usa sites (abrir, clicar, digitar), a janela do navegador aparece para você acompanhar." },
+          bind("browser_headless", h("input", { type: "checkbox", checked: !rt.browser_headless }), (v) => !v), "Mostrar o navegador enquanto a IA usa sites")),
       h("p", { class: "hint" }, "Sem bloqueio, ao passar de 80% do orçamento o roteador limita a camada Equilibrado e, acima de 100%, usa apenas a Rápida."));
 
     // --- Informações (notícias, mercado, clima, resumos)

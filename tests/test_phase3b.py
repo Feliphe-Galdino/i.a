@@ -218,14 +218,9 @@ async def test_delegation_runs_subagents_in_parallel_with_their_own_tools(ma, ro
         return [text("Integrei os relatórios dos dois agentes.")], "end_turn"
 
     async def pesquisa(req):
-        assert {t.name for t in req.tools} == {
-            "memory_save",
-            "memory_search",
-            "news_latest",
-            "news_search",
-            "trends",
-            "weather_forecast",
-        }
+        names = {t.name for t in req.tools}
+        assert {"memory_search", "news_search", "web_fetch", "browser_open"} <= names
+        assert not names & {"browser_click", "browser_type", "fs_write", "shell_run", "delegate_tasks"}
         if rounds(req) == 0:
             return [tool_use("tu_p1", "memory_search", {"query": "Python"})], "tool_use"
         result = req.messages[-1]["content"][0]

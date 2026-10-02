@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .agents.delegation import Delegator
+from .browser.service import BrowserService
 from .config import Settings
 from .core.events import EventBus
 from .core.orchestrator import Orchestrator
@@ -67,6 +68,7 @@ class Sexta:
     scheduler: Scheduler
     semantic: SemanticIndex
     delegator: Delegator
+    browser: BrowserService
 
     def close(self) -> None:
         self.voice.shutdown()
@@ -82,6 +84,7 @@ def build_sexta(
     voice_factories: dict | None = None,
     http: HttpClient | None = None,
     embedder_factory: Callable[[], Embedder] | None = None,
+    browser: BrowserService | None = None,
 ) -> Sexta:
     settings = settings or Settings()
     settings.ensure_dirs()
@@ -140,7 +143,10 @@ def build_sexta(
     briefings = BriefingService(db, intel, alerts, orchestrator, bus)
     scheduler = Scheduler(db, runtime, intel, alerts, briefings)
     delegator = Delegator(orchestrator)
-    orchestrator.services.update(intel=intel, alerts=alerts, delegator=delegator)
+    browser = browser or BrowserService(
+        settings.data_dir / "navegador-ia", headless=lambda: runtime.get().browser_headless
+    )
+    orchestrator.services.update(intel=intel, alerts=alerts, delegator=delegator, browser=browser)
 
     return Sexta(
         settings=settings,
@@ -175,4 +181,5 @@ def build_sexta(
         scheduler=scheduler,
         semantic=semantic,
         delegator=delegator,
+        browser=browser,
     )
