@@ -86,6 +86,8 @@ class Orchestrator:
         self.bus = bus
         self.tasks = tasks
         self._locks: dict[str, asyncio.Lock] = {}
+        # Serviços extras repassados às ferramentas (preenchidos pelo container)
+        self.services: dict[str, Any] = {}
 
     @property
     def offline(self) -> bool:
@@ -249,6 +251,7 @@ class Orchestrator:
             publish=publish,
             task_id=task_id,
             conversation_id=conv_id,
+            **self.services,
         )
 
         max_rounds = self.settings.max_tool_rounds

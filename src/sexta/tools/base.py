@@ -43,6 +43,11 @@ class ToolContext:
     publish: Callable[[dict[str, Any]], Awaitable[None]]
     task_id: str | None = None
     conversation_id: str | None = None
+    # Serviços opcionais (Fase 3): informações, alertas, navegador, subagentes
+    intel: Any = None
+    alerts: Any = None
+    browser: Any = None
+    delegator: Any = None
 
 
 @dataclass

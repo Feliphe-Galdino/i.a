@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from ..container import Sexta
+from ..intel.feeds import CATEGORY_LABELS
 from ..llm.catalog import MODELS, Tier
 from ..security.permissions import AUTONOMY_LEVELS, CAPABILITIES
 from ..tools.system_tools import system_snapshot
@@ -307,6 +308,7 @@ def get_settings(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
             "extra_roots": [str(p) for p in s.extra_roots],
         },
         "provider": sexta.provider.name,
+        "news_categories": CATEGORY_LABELS,
     }
 
 

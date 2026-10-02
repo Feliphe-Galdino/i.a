@@ -16,6 +16,11 @@ from .core.router import Router
 from .core.runtime_settings import RuntimeSettingsStore
 from .core.tasks import TaskManager
 from .core.usage import UsageTracker
+from .intel.alerts import AlertService
+from .intel.briefing import BriefingService
+from .intel.http import HttpClient
+from .intel.scheduler import Scheduler
+from .intel.service import IntelService
 from .llm import build_provider
 from .llm.base import LLMProvider
 from .llm.catalog import Tier
@@ -53,6 +58,10 @@ class Sexta:
     autostart: AutostartManager
     models: ModelStore
     voice: VoiceEngine
+    intel: IntelService
+    alerts: AlertService
+    briefings: BriefingService
+    scheduler: Scheduler
 
     def close(self) -> None:
         self.voice.shutdown()
@@ -66,6 +75,7 @@ def build_sexta(
     registry: ToolRegistry | None = None,
     run_key: RunKey | None = None,
     voice_factories: dict | None = None,
+    http: HttpClient | None = None,
 ) -> Sexta:
     settings = settings or Settings()
     settings.ensure_dirs()
@@ -114,6 +124,12 @@ def build_sexta(
         bus=bus,
         tasks=tasks,
     )
+    intel = IntelService(db, runtime, http)
+    alerts = AlertService(db, bus)
+    briefings = BriefingService(db, intel, alerts, orchestrator, bus)
+    scheduler = Scheduler(db, runtime, intel, alerts, briefings)
+    orchestrator.services.update(intel=intel, alerts=alerts)
+
     return Sexta(
         settings=settings,
         db=db,
@@ -141,4 +157,8 @@ def build_sexta(
             models=models,
             **(voice_factories or {}),
         ),
+        intel=intel,
+        alerts=alerts,
+        briefings=briefings,
+        scheduler=scheduler,
     )

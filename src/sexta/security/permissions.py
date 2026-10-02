@@ -52,6 +52,12 @@ CAPABILITIES: dict[str, str] = {
     "process.control": "Encerrar processos",
     "apps.launch": "Abrir programas, arquivos e links",
     "web.search": "Pesquisar na internet",
+    "intel.read": "Consultar notícias, mercado, clima e indicadores",
+    "alerts.write": "Criar e gerenciar alertas",
+    "web.read": "Ler páginas da internet",
+    "browser.read": "Navegar e ler sites no navegador automatizado",
+    "browser.act": "Clicar e preencher formulários em sites",
+    "agents.delegate": "Delegar tarefas para agentes especializados",
 }
 
 AUTONOMY_LEVELS: dict[int, dict[str, str]] = {

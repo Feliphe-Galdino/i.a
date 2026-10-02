@@ -1,4 +1,4 @@
-// Configurações: perfil, autonomia, permissões, modelos, orçamento, internet e pastas.
+// Configurações: perfil, voz, informações, autonomia, permissões, modelos, orçamento, internet e pastas.
 
 import { api } from "../api.js";
 import { refreshStatus } from "../app.js";
@@ -100,6 +100,38 @@ export function mount(root) {
         h("label", { class: "switch" }, bind("web_search", h("input", { type: "checkbox", checked: rt.web_search })), "Permitir pesquisa na internet (US$ 0,01 por busca)")),
       h("p", { class: "hint" }, "Sem bloqueio, ao passar de 80% do orçamento o roteador limita a camada Equilibrado e, acima de 100%, usa apenas a Rápida."));
 
+    // --- Informações (notícias, mercado, clima, resumos)
+    const listInput = (key, placeholder, transform = (v) => v) => {
+      const input = h("input", { type: "text", value: rt[key].join(", "), placeholder });
+      input.addEventListener("input", () => {
+        draft[key] = input.value.split(",").map((v) => transform(v.trim())).filter(Boolean);
+      });
+      return input;
+    };
+    const categories = data.news_categories || {};
+    const topicChecks = h("div", { class: "checks" }, Object.entries(categories).map(([key, label]) => {
+      const box = h("input", { type: "checkbox", checked: rt.news_topics.includes(key) });
+      box.addEventListener("change", () => {
+        const set = new Set(draft.news_topics);
+        if (box.checked) set.add(key); else set.delete(key);
+        draft.news_topics = Object.keys(categories).filter((c) => set.has(c));
+      });
+      return h("label", { class: "check" }, box, label);
+    }));
+    const intel = section("Informações: notícias, mercado, clima e resumos",
+      h("div", { class: "form-grid" },
+        h("label", { class: "switch" }, bind("intel_enabled", h("input", { type: "checkbox", checked: rt.intel_enabled })), "Atualizar e verificar alertas automaticamente"),
+        h("label", { class: "switch" }, bind("briefing_enabled", h("input", { type: "checkbox", checked: rt.briefing_enabled })), "Gerar resumos automáticos")),
+      h("div", { class: "form-grid" },
+        h("label", { class: "field" }, "Sua cidade (clima)", bind("city", h("input", { type: "text", value: rt.city, maxlength: 80, placeholder: "Ex.: Campinas" }))),
+        h("label", { class: "field" }, "Horários dos resumos", listInput("briefing_times", "08:00, 18:00"))),
+      h("label", { class: "field" }, "Ativos acompanhados", listInput("watchlist", "IBOV, USD, BTC, PETR4", (v) => v.toUpperCase())),
+      h("div", { class: "field" }, "Temas de notícias", topicChecks),
+      h("p", { class: "hint" },
+        "Ativos: ações da B3 (PETR4), dos EUA (AAPL), índices (IBOV, SP500, NASDAQ), moedas (USD, EUR) e cripto (BTC, ETH). ",
+        "Fontes públicas e gratuitas: Open-Meteo, Banco Central (SGS), AwesomeAPI, CoinGecko, Yahoo Finance, Google Notícias e feeds de G1, Agência Brasil, BBC e outros. ",
+        "Os resumos usam a camada Equilibrado (custo baixo); sem IA, sai um resumo simples a partir dos dados."));
+
     // --- Pastas
     const rootInput = h("input", { type: "text", placeholder: "Ex.: C:\\Users\\voce\\Projetos  ou  /home/voce/projetos" });
     const rootsList = h("div", { class: "roots" },
@@ -116,7 +148,7 @@ export function mount(root) {
       h("button", { class: "btn ghost", type: "button", onclick: () => { draft = structuredClone(data.runtime); render(); } }, "Descartar"),
       h("button", { class: "btn primary", type: "button", onclick: save }, "Salvar configurações"));
 
-    clear(body).append(profile, voicePanel, autonomy, permissions, routing, budget, folders, saveBar);
+    clear(body).append(profile, voicePanel, intel, autonomy, permissions, routing, budget, folders, saveBar);
   }
 
   async function save() {

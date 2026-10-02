@@ -141,7 +141,7 @@ AGENTS: dict[str, AgentProfile] = {
                 "pesquise",
                 "fonte",
             ),
-            tools=("web_search", "memory_save"),
+            tools=("news_latest", "news_search", "trends", "web_search", "weather_forecast", "memory_save"),
         ),
         AgentProfile(
             id="financas",
@@ -191,7 +191,14 @@ AGENTS: dict[str, AgentProfile] = {
                 "cotação",
                 "cotacao",
             ),
-            tools=("web_search", "memory_search"),
+            tools=(
+                "market_quotes",
+                "market_history",
+                "economic_indicators",
+                "news_search",
+                "alert_create",
+                "web_search",
+            ),
             min_tier=Tier.BALANCED,
         ),
         AgentProfile(

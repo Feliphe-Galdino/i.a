@@ -6,12 +6,13 @@ import { emit, on, state } from "./state.js";
 import { clear, fmt, toast } from "./ui.js";
 import * as chat from "./views/chat.js";
 import * as dashboard from "./views/dashboard.js";
+import * as world from "./views/world.js";
 import * as memory from "./views/memory.js";
 import * as activity from "./views/activity.js";
 import * as settings from "./views/settings.js";
 import { initVoice, voice } from "./voice/voice.js";
 
-const VIEWS = { chat, painel: dashboard, memoria: memory, atividade: activity, config: settings };
+const VIEWS = { chat, painel: dashboard, mundo: world, memoria: memory, atividade: activity, config: settings };
 let unmount = null;
 let statusTimer = null;
 let voiceStarted = false;
@@ -147,11 +148,28 @@ function handleEvent(ev) {
     case "memory_saved":
       toast(`🧠 ${ev.created ? "Memória salva" : "Memória atualizada"}: ${ev.memory.content}`, "good");
       break;
+    case "alert":
+      toast(`🔔 ${ev.title} — ${ev.message}`, "warn", 10000);
+      notify(ev.title, ev.message);
+      break;
+    case "briefing_ready":
+      toast(`📰 Resumo pronto: ${ev.headline}`, "good", 7000);
+      notify("Resumo do dia pronto", ev.headline);
+      break;
     default:
       break;
   }
   updateCore();
   emit("live", ev);
+}
+
+/** Notificação do Windows quando a janela não está em foco (se você permitiu na tela Mundo). */
+function notify(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted" || document.hasFocus()) return;
+  try {
+    const n = new Notification(`Sexta-Feira — ${title}`, { body, icon: "/static/favicon.svg", tag: `sexta-${title}` });
+    n.onclick = () => { window.focus(); location.hash = "#/mundo"; n.close(); };
+  } catch { /* alguns navegadores só permitem via service worker */ }
 }
 
 async function panic() {
