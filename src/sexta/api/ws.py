@@ -1,7 +1,7 @@
 """WebSocket: canal em tempo real entre a interface e o núcleo.
 
 Mensagens do cliente:
-    {"type": "chat", "text": "...", "conversation_id": "...", "mode": "auto"}
+    {"type": "chat", "text": "...", "conversation_id": "...", "mode": "auto", "channel": "texto|voz"}
     {"type": "cancel", "task_id": "..."}
     {"type": "approval", "approval_id": "...", "approved": true}
     {"type": "ping"}
@@ -78,6 +78,7 @@ async def _handle(sexta: Sexta, message: Any) -> dict[str, Any] | None:
                 str(message.get("text", "")),
                 conversation_id=message.get("conversation_id") or None,
                 mode=str(message.get("mode") or "auto"),
+                channel=str(message.get("channel") or "texto"),
             )
         except (KeyError, ValueError) as exc:
             return {"type": "error", "message": str(exc).strip("'\""), "client_ref": message.get("client_ref")}

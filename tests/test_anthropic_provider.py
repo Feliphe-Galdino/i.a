@@ -230,3 +230,10 @@ async def test_unsupported_eager_streaming_is_disabled_and_retried():
     await collect(AnthropicProvider("k", client=client), request("claude-haiku-4-5"))
     assert client.calls[0]["tools"][0]["eager_input_streaming"] is True
     assert "eager_input_streaming" not in client.calls[1]["tools"][0]
+
+
+async def test_no_credits_message_is_friendly():
+    error = bad_request("Your credit balance is too low to access the Anthropic API.")
+    client = FakeClient([FakeStream([], None, error=error)])
+    with pytest.raises(LLMError, match="sem créditos"):
+        await collect(AnthropicProvider("k", client=client), request("claude-haiku-4-5"))

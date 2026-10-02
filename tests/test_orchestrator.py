@@ -254,3 +254,30 @@ async def test_two_messages_same_conversation_are_serialized(sexta, provider):
     assert done == [first["task_id"], second["task_id"]]
     history = sexta.conversations.api_messages(first["conversation_id"])
     assert [m["role"] for m in history] == ["user", "assistant", "user", "assistant"]
+
+
+async def test_voice_channel_reaches_context_and_events(sexta, provider):
+    provider.add([text("São três da tarde.")])
+    queue = sexta.bus.subscribe()
+    try:
+        await sexta.orchestrator.submit("que horas são?", channel="voz")
+        events = await collect_until_done(queue)
+    finally:
+        sexta.bus.unsubscribe(queue)
+    assert all(e.get("channel") == "voz" for e in events if e.get("task_id"))
+    context = provider.requests[0].messages[-1]["content"][0]["text"]
+    assert "canal: voz" in context
+
+
+async def test_text_channel_is_default_and_invalid_channel_falls_back(sexta, provider):
+    provider.add([text("ok")]).add([text("ok")])
+    _, events = await run_turn(sexta, "oi")
+    assert done_event(events)["channel"] == "texto"
+    queue = sexta.bus.subscribe()
+    try:
+        await sexta.orchestrator.submit("oi", channel="telepatia")
+        events = await collect_until_done(queue)
+    finally:
+        sexta.bus.unsubscribe(queue)
+    assert done_event(events)["channel"] == "texto"
+    assert "canal: voz" not in provider.requests[-1].messages[-1]["content"][0]["text"]

@@ -55,6 +55,32 @@ Permite responder em streaming, rodar várias tarefas e esperar aprovações sem
   `web/js/markdown.js` (escapar antes de formatar), `web/js/views/chat.js` (eventos ao vivo).
 - **Exercício:** adicione um botão “copiar resposta” no rodapé de cada mensagem.
 
+## Fase 2 — conceitos usados
+
+### 9. Processamento de sinais de áudio (DSP) básico
+- Veja: `web/js/voice/clap-detector.js` e `tests/js/clap-detector.test.mjs`.
+- Conceitos: amostras, RMS × pico, ruído de fundo (média móvel), detecção de *onset*,
+  sinais sintéticos para testes.
+- **Exercício:** mude `maxGap` para aceitar palmas mais lentas e escreva um teste com
+  intervalo de 1 s.
+
+### 10. Máquinas de estado
+- Veja: `web/js/voice/voice.js` (off → idle → listening → thinking → speaking).
+- **Exercício:** desenhe o diagrama de estados (incluindo a confirmação por voz) e compare
+  com o código.
+
+### 11. APIs do navegador: Web Speech, Web Audio e AudioWorklet
+- Veja: `voice.js` (`SpeechRecognition`, `speechSynthesis`, `AudioWorkletNode`) e
+  `clap-worklet.js`.
+- **Exercício:** no console (F12) da janela, rode
+  `sextaVoice.simulateSpeech("olá sexta-feira que horas são")`.
+
+### 12. Integração com o sistema operacional
+- Veja: `src/sexta/winsys.py` (registro do Windows, `pythonw`, processos desacoplados,
+  instância única via `/api/health`) e `tests/test_winsys.py` (registro falso nos testes).
+- **Exercício:** rode `sexta autostart status` e encontre o valor `SextaFeira` no
+  Editor do Registro (`regedit`) em `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
+
 ## Hábitos de engenharia que o projeto pratica
 
 - Pequenas entregas funcionais (fases), cada uma testada.

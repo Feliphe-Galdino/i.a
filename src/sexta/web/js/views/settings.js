@@ -2,8 +2,15 @@
 
 import { api } from "../api.js";
 import { refreshStatus } from "../app.js";
-import { state } from "../state.js";
-import { clear, h, riskTag, toast } from "../ui.js";
+import { on, state } from "../state.js";
+import { clear, fill, h, riskTag, toast } from "../ui.js";
+import { listVoices, saveVoiceSettings, testVoice, voice } from "../voice/voice.js";
+
+const VOICE_MODES = [
+  ["texto", "Texto", "Sem microfone e sem fala."],
+  ["ambos", "Ambos", "Ativa por voz/palmas; fala só as respostas a pedidos falados."],
+  ["voz", "Voz", "Ativa por voz/palmas e fala todas as respostas."],
+];
 
 const PRIORITIES = [
   ["qualidade", "Qualidade", "Usa modelos e esforço maiores sempre que fizer sentido."],
@@ -109,7 +116,7 @@ export function mount(root) {
       h("button", { class: "btn ghost", type: "button", onclick: () => { draft = structuredClone(data.runtime); render(); } }, "Descartar"),
       h("button", { class: "btn primary", type: "button", onclick: save }, "Salvar configurações"));
 
-    clear(body).append(profile, autonomy, permissions, routing, budget, folders, saveBar);
+    clear(body).append(profile, voicePanel, autonomy, permissions, routing, budget, folders, saveBar);
   }
 
   async function save() {
@@ -121,8 +128,102 @@ export function mount(root) {
     } catch (err) { toast(err.message, "bad", 7000); }
   }
 
+  // --- Voz e ativação (preferências deste navegador; salvas na hora) -----------
+  const voicePanel = h("section", { class: "panel" });
+  const meterFill = h("span", { class: "fill" });
+  const meterMark = h("span", { class: "mark" });
+  const meter = h("div", { class: "meter", title: "Nível do microfone (a linha laranja é o limite para uma palma)" }, meterFill, meterMark);
+  const clapInfo = h("span", { class: "hint" }, "Bata duas palmas para testar.");
+  const autostartSwitch = h("input", { type: "checkbox", disabled: true });
+  const autostartHint = h("span", { class: "hint" }, "verificando…");
+  let claps = 0;
+
+  function renderVoicePanel() {
+    const vs = voice.settings;
+    const set = (patch) => { saveVoiceSettings(patch); renderVoicePanel(); };
+    const toggle = (key, label) => {
+      const input = h("input", { type: "checkbox", checked: vs[key] });
+      input.addEventListener("change", () => set({ [key]: input.checked }));
+      return h("label", { class: "switch" }, input, label);
+    };
+    const range = (key, min, max, step, label, fmtValue) => {
+      const out = h("span", { class: "hint" }, fmtValue(vs[key]));
+      const input = h("input", { type: "range", min, max, step, value: vs[key] });
+      input.addEventListener("input", () => { out.textContent = fmtValue(Number(input.value)); saveVoiceSettings({ [key]: Number(input.value) }); });
+      return h("label", { class: "field" }, h("span", {}, label, " ", out), input);
+    };
+    const voices = listVoices();
+    const voiceSelect = h("select", {},
+      h("option", { value: "" }, "Automática (melhor voz em português)"),
+      voices.map((v) => h("option", { value: v.voiceURI, selected: v.voiceURI === vs.voiceURI }, `${v.name} (${v.lang})`)));
+    voiceSelect.addEventListener("change", () => saveVoiceSettings({ voiceURI: voiceSelect.value }));
+
+    fill(voicePanel,
+      h("div", { class: "panel-head" }, "Voz e ativação"),
+      h("div", { class: "panel-body" },
+        h("div", { class: "voice-status" },
+          h("span", { class: `tag ${voice.supported.recognition ? "green" : "red"}` }, voice.supported.recognition ? "reconhecimento de fala: ok" : "reconhecimento de fala: use Chrome/Edge"),
+          h("span", { class: `tag ${voice.supported.claps ? "green" : "red"}` }, voice.supported.claps ? "palmas: ok" : "palmas: indisponível"),
+          h("span", { class: `tag ${voice.supported.synthesis ? "green" : "red"}` }, voice.supported.synthesis ? `vozes: ${voices.length}` : "fala: indisponível"),
+          h("span", { class: "tag cyan" }, `estado: ${voice.state}`),
+          voice.error ? h("span", { class: "tag red", title: voice.error }, "erro de microfone") : null),
+        h("div", { class: "levels" }, VOICE_MODES.map(([value, label, desc]) => h("button", {
+          type: "button", class: `level ${vs.mode === value ? "on" : ""}`, onclick: () => set({ mode: value }),
+        }, h("strong", {}, label), h("span", {}, desc)))),
+        h("div", { class: "form-grid" },
+          toggle("wake", "Ativar com “Olá, Sexta-Feira”"),
+          toggle("nameOnly", "Aceitar também “Sexta-Feira, …” (sem saudação)"),
+          toggle("claps", "Ativar com duas palmas")),
+        h("div", { class: "form-grid" },
+          h("div", { class: "field" }, range("clapSensitivity", 0, 1, 0.05, "Sensibilidade das palmas", (v) => `${Math.round(v * 100)}%`), meter, clapInfo),
+          h("label", { class: "field" }, "Voz da assistente", voiceSelect),
+          range("rate", 0.7, 1.5, 0.05, "Velocidade da fala", (v) => `${v.toFixed(2)}×`),
+          range("pitch", 0.5, 1.5, 0.05, "Tom da voz", (v) => v.toFixed(2))),
+        h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" } },
+          h("button", { class: "btn", type: "button", onclick: testVoice }, "Testar voz"),
+          h("label", { class: "switch" }, autostartSwitch, "Iniciar com o Windows (abre a janela de voz ao ligar o PC)"),
+          autostartHint),
+        h("p", { class: "hint" },
+          "Privacidade: as palmas são detectadas no seu computador. Já o reconhecimento de fala do navegador envia o áudio ao serviço do Google (Chrome) ou da Microsoft (Edge) enquanto escuta. ",
+          "Para enviar áudio só depois de ativar, desligue “Olá, Sexta-Feira” e use as palmas ou o botão do microfone. ",
+          "Confirmações por voz valem apenas para ações não críticas.")));
+  }
+
+  async function loadAutostart() {
+    try {
+      const status = await api("/api/system/autostart");
+      autostartSwitch.checked = Boolean(status.enabled);
+      autostartSwitch.disabled = !status.supported;
+      autostartHint.textContent = !status.supported ? "disponível só no Windows"
+        : status.enabled && !status.up_to_date ? "desatualizado — desligue e ligue de novo" : "";
+    } catch (err) { autostartHint.textContent = err.message; }
+  }
+  autostartSwitch.addEventListener("change", async () => {
+    try {
+      await api("/api/system/autostart", { method: "PUT", body: { enabled: autostartSwitch.checked } });
+      toast(autostartSwitch.checked ? "A Sexta-Feira vai iniciar com o Windows." : "Início automático desligado.", "good");
+    } catch (err) { toast(err.message, "bad"); }
+    loadAutostart();
+  });
+
+  const offLevel = on("voice-level", (lvl) => {
+    meterFill.style.width = `${Math.min(100, Math.sqrt(lvl.peak) * 100)}%`;
+    meterMark.style.left = `${Math.min(100, Math.sqrt(lvl.threshold) * 100)}%`;
+  });
+  const offClap = on("voice-clap", () => {
+    claps++;
+    clapInfo.textContent = `Palmas detectadas: ${claps}`;
+    meter.classList.add("flash");
+    setTimeout(() => meter.classList.remove("flash"), 250);
+  });
+  const offDouble = on("voice-double-clap", () => { clapInfo.textContent = `Palmas detectadas: ${claps} — ativação! ✔`; });
+  const offVoices = on("voice-voices", renderVoicePanel);
+  const offState = on("voice-state", renderVoicePanel);
+
+  renderVoicePanel();
+  loadAutostart();
   load();
-  return null;
+  return () => { offLevel(); offClap(); offDouble(); offVoices(); offState(); };
 }
 
 const RISK_ORDER = ["safe", "read", "write", "exec", "critical"];

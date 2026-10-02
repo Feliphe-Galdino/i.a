@@ -88,6 +88,24 @@ pelas mesmas guardas e confirmações — a IA não tem como pular o executor.
 - **Orçamento diário:** o roteador economiza ao se aproximar do limite e pode bloquear
   chamadas ao atingi-lo.
 
+## Voz
+
+- **Palmas:** detectadas localmente (AudioWorklet); nenhum áudio sai do computador.
+- **Fala:** o reconhecimento do navegador envia o áudio ao serviço de fala do Google (Chrome)
+  ou da Microsoft (Edge) **enquanto escuta**. Com “Olá, Sexta-Feira” desligado, ele só escuta
+  depois das palmas ou do botão.
+- **Confirmações por voz** valem apenas para ações não críticas. Ações **críticas** sempre
+  exigem clique na tela — uma TV ou outra pessoa dizendo “sim” não basta.
+- A janela de voz usa um **perfil próprio do navegador** dentro da pasta de dados protegida;
+  a permissão de microfone vale só para a Sexta-Feira (`http://127.0.0.1:8765`).
+
+## Início automático
+
+- Usa a chave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` do seu usuário
+  (sem privilégios de administrador). O comando registrado é montado pelo próprio sistema.
+- Desligue com `sexta autostart off`, pela interface ou pelo Gerenciador de Tarefas.
+- `sexta stop` encerra o servidor oculto; o servidor nunca abre portas fora de `127.0.0.1`.
+
 ## Limitações conhecidas (honestidade)
 
 - Um comando aprovado roda com as permissões do seu usuário no sistema: leia o resumo

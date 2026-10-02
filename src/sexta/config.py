@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     # Hosts extras aceitos no cabeçalho Host (proteção contra DNS rebinding).
     allowed_hosts: str = ""
     access_token: SecretStr | None = None
+    # Navegador da janela de voz (padrão: Chrome; se não houver, Edge).
+    browser: str | None = None
 
     # --- Armazenamento ----------------------------------------------------
     data_dir: Path = Field(default_factory=lambda: Path.home() / ".sexta-feira")
@@ -68,6 +70,14 @@ class Settings(BaseSettings):
     @property
     def trash_dir(self) -> Path:
         return self.data_dir / "lixeira"
+
+    @property
+    def logs_dir(self) -> Path:
+        return self.data_dir / "logs"
+
+    @property
+    def browser_profile_dir(self) -> Path:
+        return self.data_dir / "navegador"
 
     @property
     def extra_roots(self) -> list[Path]:

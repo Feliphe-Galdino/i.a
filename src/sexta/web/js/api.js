@@ -19,13 +19,18 @@ export function clearToken() {
 let memoryToken = "";
 const token = () => memoryToken || getToken();
 
+/** Parâmetros lidos da URL na abertura (ex.: ?voz=1 da janela que inicia com o Windows). */
+export const urlFlags = { voice: false };
+
 /** Captura ?token= da URL (link impresso no terminal) e limpa a barra de endereços. */
 export function captureTokenFromUrl() {
   const url = new URL(window.location.href);
   const value = url.searchParams.get("token");
-  if (value) {
-    setToken(value);
+  urlFlags.voice = url.searchParams.get("voz") === "1";
+  if (value) setToken(value);
+  if (value || url.searchParams.has("voz")) {
     url.searchParams.delete("token");
+    url.searchParams.delete("voz");
     window.history.replaceState(null, "", url.pathname + url.hash);
   }
   memoryToken = memoryToken || getToken();

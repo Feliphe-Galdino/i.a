@@ -15,19 +15,20 @@ Construção em fases: cada uma entrega algo **utilizável** sem reconstruir o q
 - [x] Pesquisa na web integrada (servidor da Anthropic)
 - [x] 105+ testes automatizados
 
-## 🔜 Fase 2 — Voz e presença
+## ✅ Fase 2 — Voz e presença (concluída)
 
-**Objetivo:** falar com a Sexta-Feira sem tocar no teclado.
+- [x] Plataforma-alvo: **Windows 11**
+- [x] Inicia com o Windows (chave `Run` do usuário, sem administrador) e abre a janela de voz
+- [x] Servidor oculto (`pythonw`), instância única, logs em arquivo, `sexta open/stop/autostart`
+- [x] Ativação por **“Olá, Sexta-Feira”** (Web Speech API, pt-BR) e por **duas palmas**
+      (detector local em AudioWorklet, sensibilidade ajustável com medidor ao vivo)
+- [x] Respostas faladas (speechSynthesis — vozes gratuitas do Windows/Chrome/Edge)
+- [x] Modos Texto / Voz / Ambos; comandos “silêncio” e “parar”
+- [x] Confirmação por voz para ações não críticas; críticas exigem clique
+- [x] O núcleo sabe quando o pedido veio por voz e responde de forma curta e falável
 
-- Reconhecimento de fala (pt-BR): navegador (Web Speech API) para começar; depois
-  **Whisper/faster-whisper local** (privacidade, offline).
-- Palavra de ativação **“Olá, Sexta-Feira”**: detecção local (openWakeWord/Porcupine) —
-  o áudio não sai do computador até a ativação.
-- **Duas palmas**: detector de picos de energia no microfone (Web Audio/`sounddevice`),
-  com sensibilidade ajustável e janela de 150–700 ms entre as palmas.
-- Respostas faladas com voz personalizável (TTS do sistema → Piper local → vozes neurais).
-- Modos: texto, voz ou ambos; indicador de microfone e configurações de privacidade.
-- Respostas mais curtas quando a interação for por voz.
+**Melhorias futuras de voz:** reconhecimento local e offline (faster-whisper) e palavra de
+ativação local (openWakeWord) para privacidade total; vozes neurais locais (Piper).
 
 ## Fase 3 — Inteligência ampliada
 

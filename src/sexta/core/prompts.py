@@ -60,6 +60,12 @@ def build_system_prompt(*, assistant_name: str, user_name: str, custom_instructi
     )
 
 
+VOICE_HINT = (
+    "canal: voz — o usuário falou este pedido e ouvirá a resposta em voz alta. Responda de forma breve e "
+    "natural (de 1 a 4 frases), sem tabelas, listas longas, emojis ou Markdown. Se precisar de código ou "
+    "conteúdo longo, faça o trabalho, mostre na tela e diga apenas um resumo falado."
+)
+
 WEEKDAYS = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 
 
@@ -78,6 +84,7 @@ def build_turn_context(
     memories: list[Memory],
     timezone: str | None,
     web_search: bool,
+    channel: str = "texto",
 ) -> str:
     now = now_local(timezone)
     lines = [
@@ -85,6 +92,8 @@ def build_turn_context(
         f"data_hora: {WEEKDAYS[now.weekday()]}, {now:%d/%m/%Y %H:%M} (UTC{now:%z})",
         f"agente_ativo: {agent.name} — {agent.instructions}",
     ]
+    if channel == "voz":
+        lines.append(VOICE_HINT)
     if agent.tools:
         lines.append(f"ferramentas_sugeridas: {', '.join(agent.tools)}")
     lines.append(f"busca_na_web: {'disponível' if web_search else 'desativada'}")

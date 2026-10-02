@@ -21,10 +21,15 @@ export function resolved(approvalId) {
   showNext();
 }
 
+/** Responde a um pedido de aprovação (clique ou voz). */
+export function answerApproval(approvalId, approved) {
+  live.send({ type: "approval", approval_id: approvalId, approved });
+  resolved(approvalId);
+}
+
 function answer(approved) {
   if (!current) return;
-  live.send({ type: "approval", approval_id: current.approval_id, approved });
-  resolved(current.approval_id);
+  answerApproval(current.approval_id, approved);
 }
 
 function close() {

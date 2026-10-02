@@ -2,7 +2,7 @@
 
 import { api, live } from "../api.js";
 import { renderMarkdown } from "../markdown.js";
-import { on, setCurrentConversation, state } from "../state.js";
+import { emit, on, setCurrentConversation, state } from "../state.js";
 import { add, clear, debounce, fill, fmt, h, riskTag, STATUS_LABEL, toast } from "../ui.js";
 
 const MODES = [
@@ -165,6 +165,7 @@ export function mount(root) {
   const views = new Map();       // task_id -> AssistantView
   const buffered = new Map();    // eventos que chegaram antes do task_accepted
   const myRefs = new Set();
+  const voiceRefs = new Set();
   let conversations = [];
 
   // ---------- Estrutura ----------
@@ -315,8 +316,8 @@ export function mount(root) {
     }
   }
 
-  function userBubble(text) {
-    return h("div", { class: "msg user" }, h("div", { class: "bubble" }, text));
+  function userBubble(text, viaVoice = false) {
+    return h("div", { class: "msg user" }, h("div", { class: "bubble" }, viaVoice ? "🎙 " : null, text));
   }
 
   async function renameConversation() {
@@ -335,18 +336,29 @@ export function mount(root) {
   }
 
   // ---------- Envio e eventos ao vivo ----------
-  function send() {
-    const text = textarea.value.trim();
+  function send(spoken = null) {
+    const viaVoice = typeof spoken === "string";
+    const text = (viaVoice ? spoken : textarea.value).trim();
     if (!text) return;
     if (!state.connected) toast("Sem conexão — a mensagem será enviada ao reconectar.", "warn");
     if (inner.querySelector(".welcome")) clear(inner);
-    inner.append(userBubble(text));
+    inner.append(userBubble(text, viaVoice));
     scrollDown(true);
     const ref = Math.random().toString(36).slice(2);
     myRefs.add(ref);
-    live.send({ type: "chat", text, conversation_id: convId, mode, client_ref: ref });
-    textarea.value = "";
-    autoGrow();
+    if (viaVoice) voiceRefs.add(ref);
+    live.send({ type: "chat", text, conversation_id: convId, mode, client_ref: ref, channel: viaVoice ? "voz" : "texto" });
+    if (!viaVoice) {
+      textarea.value = "";
+      autoGrow();
+    }
+  }
+
+  function consumeVoiceCommand() {
+    const command = state.pendingVoiceCommand;
+    if (!command) return;
+    state.pendingVoiceCommand = null;
+    send(command);
   }
 
   function attachView(taskId) {
@@ -405,6 +417,7 @@ export function mount(root) {
     }
     if (ev.type === "error" && !ev.task_id && myRefs.has(ev.client_ref)) {
       myRefs.delete(ev.client_ref);
+      if (voiceRefs.delete(ev.client_ref)) emit("voice-failed", ev.message);
       toast(ev.message, "bad");
       return;
     }
@@ -427,9 +440,19 @@ export function mount(root) {
     }
   });
 
+  const offVoice = on("voice-command", consumeVoiceCommand);
+  const offVoiceState = on("voice-state", (vs) => {
+    const core = inner.querySelector(".welcome .core");
+    if (core) core.className = `core core-lg ${vs === "listening" || vs === "speaking" ? vs : vs === "thinking" ? "thinking" : "idle"}`;
+  });
+
   loadConversations();
-  openConversation(convId);
+  openConversation(convId).then(consumeVoiceCommand);
   setTimeout(() => textarea.focus(), 50);
 
-  return () => offLive();
+  return () => {
+    offLive();
+    offVoice();
+    offVoiceState();
+  };
 }

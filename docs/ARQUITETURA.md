@@ -9,9 +9,9 @@ um novo registro em vez de apagar o antigo.
 ```mermaid
 flowchart LR
     subgraph Interfaces
-        UI[Interface web HUD]
-        CLI[CLI sexta]
-        FUT[Voz / celular<br/>fases futuras]
+        UI[Interface web HUD<br/>+ voz e palmas]
+        CLI[CLI sexta<br/>open · stop · autostart]
+        FUT[Celular<br/>fases futuras]
     end
 
     subgraph Núcleo["Núcleo — MEGABRAIN"]
@@ -170,3 +170,30 @@ Desative com `SEXTA_REFUSAL_FALLBACK=false`.
 ### ADR-009 — Uma tarefa por conversa por vez
 **Decisão:** um lock por conversa serializa as tarefas; conversas diferentes rodam em
 paralelo. **Por quê:** mantém o histórico ordenado e válido sem complicar a interface.
+
+### ADR-010 — Voz no navegador (Web Speech API + speechSynthesis)
+**Contexto:** queríamos voz grátis e simples no Windows 11, já na Fase 2.
+**Decisão:** reconhecimento pela Web Speech API (pt-BR, contínuo) e fala pelo
+`speechSynthesis` (vozes do Windows/Chrome/Edge). Nada para instalar além do navegador.
+**Custo:** o áudio vai ao serviço de fala do navegador enquanto escuta (documentado; há modo
+“só palmas”). **Evolução:** faster-whisper + openWakeWord locais quando quisermos privacidade
+total — o resto do sistema não muda, pois a voz só conversa com o núcleo pelo WebSocket.
+
+### ADR-011 — Palmas detectadas localmente em AudioWorklet
+**Decisão:** detector próprio (pico + energia relativa + duração curta + intervalo entre
+palmas) rodando na thread de áudio. **Por quê:** funciona com a janela minimizada (não depende
+de `requestAnimationFrame`), é instantâneo, privado e testável (classe pura com testes no Node
+usando sinais sintéticos; teste ponta a ponta com microfone falso no Chromium).
+
+### ADR-012 — Início com o Windows: chave Run + janela dedicada
+**Decisão:** `HKCU\...\Run` executa `pythonw -m sexta serve --app-window --headless --workdir …`.
+O servidor sobe oculto (logs em arquivo, instância única) e abre o Chrome/Edge em modo app com
+**perfil próprio** e flags que liberam áudio sem clique (`--autoplay-policy=…`) e evitam que a
+janela “adormeça” minimizada. **Por quê:** não exige administrador (o Agendador de Tarefas
+exigiria para gatilho de logon), é fácil de desfazer e não interfere no navegador do dia a dia.
+
+### ADR-013 — Canal da mensagem (texto × voz) no núcleo
+**Decisão:** cada pedido carrega `channel`; pedidos por voz recebem no contexto do turno a
+instrução de responder de forma curta e falável, e os eventos levam o canal para a interface
+decidir se fala a resposta. Mantém o histórico append-only (a instrução vai na mensagem do
+usuário, não no system prompt).

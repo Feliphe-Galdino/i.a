@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sexta-feira"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sexta-Feira — assistente pessoal de IA com roteamento de modelos, memória persistente e automação segura"
 readme = "README.md"
 requires-python = ">=3.11"

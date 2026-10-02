@@ -7,6 +7,7 @@ interfaces (CLI, voz, app de celular) reutilizam ``build_sexta``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from .config import Settings
 from .core.events import EventBus
@@ -27,6 +28,7 @@ from .security.guards import SecretRedactor
 from .tools import build_default_registry
 from .tools.base import ToolRegistry
 from .tools.executor import ToolExecutor
+from .winsys import AutostartManager, RunKey
 
 
 @dataclass
@@ -46,6 +48,7 @@ class Sexta:
     router: Router
     provider: LLMProvider
     orchestrator: Orchestrator
+    autostart: AutostartManager
 
     def close(self) -> None:
         self.db.close()
@@ -56,6 +59,7 @@ def build_sexta(
     *,
     provider: LLMProvider | None = None,
     registry: ToolRegistry | None = None,
+    run_key: RunKey | None = None,
 ) -> Sexta:
     settings = settings or Settings()
     settings.ensure_dirs()
@@ -119,4 +123,5 @@ def build_sexta(
         router=router,
         provider=provider,
         orchestrator=orchestrator,
+        autostart=AutostartManager(Path.cwd(), run_key),
     )

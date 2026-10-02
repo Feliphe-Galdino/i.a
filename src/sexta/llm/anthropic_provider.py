@@ -159,6 +159,11 @@ class AnthropicProvider:
                         log.warning("Histórico de raciocínio inválido; reenviando sem ele.")
                         strip_thinking = True
                         continue
+                if "credit balance" in lowered:
+                    raise LLMError(
+                        "Sua conta da Anthropic está sem créditos. Adicione créditos em "
+                        "console.anthropic.com → Plans & Billing e tente de novo."
+                    ) from exc
                 raise LLMError(f"A API recusou a requisição: {message}") from exc
             except anthropic.AuthenticationError as exc:
                 raise LLMError("Chave de API inválida. Verifique ANTHROPIC_API_KEY no arquivo .env.") from exc

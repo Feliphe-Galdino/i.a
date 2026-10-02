@@ -53,6 +53,7 @@ from .usage import UsageTracker
 log = logging.getLogger(__name__)
 
 MODES = {"auto", "rapido", "equilibrado", "profundo"}
+CHANNELS = {"texto", "voz"}
 
 
 class Orchestrator:
@@ -96,13 +97,21 @@ class Orchestrator:
         return PathSandbox(roots=roots, blocked=[self.settings.data_dir], default_dir=self.settings.workspace_dir)
 
     # ------------------------------------------------------------------
-    async def submit(self, text: str, *, conversation_id: str | None = None, mode: str = "auto") -> dict[str, str]:
+    async def submit(
+        self,
+        text: str,
+        *,
+        conversation_id: str | None = None,
+        mode: str = "auto",
+        channel: str = "texto",
+    ) -> dict[str, str]:
         text = (text or "").strip()
         if not text:
             raise ValueError("Mensagem vazia.")
         if len(text) > 200_000:
             raise ValueError("Mensagem longa demais (máx. 200 mil caracteres).")
         mode = mode if mode in MODES else "auto"
+        channel = channel if channel in CHANNELS else "texto"
         if conversation_id:
             if self.conversations.get(conversation_id) is None:
                 raise KeyError("Conversa não encontrada.")
@@ -126,7 +135,7 @@ class Orchestrator:
             )
         task_id = uuid.uuid4().hex[:12]
         self.tasks.create_record(task_id, conversation_id, text)
-        self.tasks.start(task_id, self._run(task_id, conversation_id, text, mode))
+        self.tasks.start(task_id, self._run(task_id, conversation_id, text, mode, channel))
         return {"task_id": task_id, "conversation_id": conversation_id}
 
     async def wait(self, task_id: str) -> dict[str, Any]:
@@ -139,7 +148,7 @@ class Orchestrator:
         return await asyncio.shield(task)
 
     # ------------------------------------------------------------------
-    async def _run(self, task_id: str, conv_id: str, raw_text: str, mode: str) -> dict[str, Any]:
+    async def _run(self, task_id: str, conv_id: str, raw_text: str, mode: str, channel: str) -> dict[str, Any]:
         lock = self._locks.setdefault(conv_id, asyncio.Lock())
         try:
             await lock.acquire()
@@ -147,16 +156,16 @@ class Orchestrator:
             # Cancelada enquanto esperava outra tarefa da mesma conversa terminar.
             self.tasks.update_record(task_id, status="cancelled", finished_at=utcnow())
             result = {"task_id": task_id, "status": "cancelled", "error": None, "text": "", "cost_usd": 0.0}
-            await self.bus.publish({"type": "task_done", "conversation_id": conv_id, **result})
+            await self.bus.publish({"type": "task_done", "conversation_id": conv_id, "channel": channel, **result})
             return result
         try:
-            return await self._run_locked(task_id, conv_id, raw_text, mode)
+            return await self._run_locked(task_id, conv_id, raw_text, mode, channel)
         finally:
             lock.release()
 
-    async def _run_locked(self, task_id: str, conv_id: str, raw_text: str, mode: str) -> dict[str, Any]:
+    async def _run_locked(self, task_id: str, conv_id: str, raw_text: str, mode: str, channel: str) -> dict[str, Any]:
         async def publish(event: dict[str, Any]) -> None:
-            await self.bus.publish({**event, "task_id": task_id, "conversation_id": conv_id})
+            await self.bus.publish({**event, "task_id": task_id, "conversation_id": conv_id, "channel": channel})
 
         runtime = self.runtime.get()
         conv = self.conversations.get(conv_id)
@@ -210,7 +219,7 @@ class Orchestrator:
         web_search = runtime.web_search and runtime.permission_overrides.get("web.search") != "deny"
         memories = self.memory.relevant_for(text)
         context = build_turn_context(
-            agent=agent, memories=memories, timezone=self.settings.timezone, web_search=web_search
+            agent=agent, memories=memories, timezone=self.settings.timezone, web_search=web_search, channel=channel
         )
         self.conversations.append(
             conv_id,

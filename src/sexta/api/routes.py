@@ -52,13 +52,16 @@ class ChatIn(BaseModel):
     text: str = Field(min_length=1, max_length=200_000)
     conversation_id: str | None = None
     mode: Literal["auto", "rapido", "equilibrado", "profundo"] = "auto"
+    channel: Literal["texto", "voz"] = "texto"
     wait: bool = False
 
 
 @router.post("/chat")
 async def chat(body: ChatIn, sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
     try:
-        ids = await sexta.orchestrator.submit(body.text, conversation_id=body.conversation_id, mode=body.mode)
+        ids = await sexta.orchestrator.submit(
+            body.text, conversation_id=body.conversation_id, mode=body.mode, channel=body.channel
+        )
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
@@ -314,3 +317,35 @@ def update_settings(changes: dict[str, Any], sexta: Sexta = Depends(get_sexta)) 
         raise HTTPException(400, f"Configuração inválida: {exc}") from exc
     sexta.audit.record("settings_changed", detail={"changes": changes})
     return updated.model_dump()
+
+
+# --- Sistema (Windows) ---------------------------------------------------------
+
+
+@router.get("/system/autostart")
+def autostart_status(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
+    return sexta.autostart.status()
+
+
+class AutostartIn(BaseModel):
+    enabled: bool
+
+
+@router.put("/system/autostart")
+def set_autostart(body: AutostartIn, sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
+    if not sexta.autostart.supported:
+        raise HTTPException(400, "Iniciar com o sistema está disponível apenas no Windows.")
+    status = sexta.autostart.enable() if body.enabled else sexta.autostart.disable()
+    sexta.audit.record("autostart_changed", detail={"enabled": body.enabled})
+    return status
+
+
+@router.post("/system/shutdown")
+def shutdown(request: Request, sexta: Sexta = Depends(get_sexta)) -> dict[str, str]:
+    server = getattr(request.app.state, "server", None)
+    sexta.audit.record("shutdown")
+    if server is None:
+        raise HTTPException(503, "Servidor não foi iniciado pela linha de comando.")
+    sexta.tasks.cancel_all()
+    server.should_exit = True
+    return {"status": "encerrando"}

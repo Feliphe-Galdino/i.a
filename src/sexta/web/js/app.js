@@ -2,17 +2,19 @@
 
 import { api, live, captureTokenFromUrl, getToken, setToken, clearToken } from "./api.js";
 import * as approvals from "./approvals.js";
-import { state, emit } from "./state.js";
+import { emit, on, state } from "./state.js";
 import { clear, fmt, toast } from "./ui.js";
 import * as chat from "./views/chat.js";
 import * as dashboard from "./views/dashboard.js";
 import * as memory from "./views/memory.js";
 import * as activity from "./views/activity.js";
 import * as settings from "./views/settings.js";
+import { initVoice, voice } from "./voice/voice.js";
 
 const VIEWS = { chat, painel: dashboard, memoria: memory, atividade: activity, config: settings };
 let unmount = null;
 let statusTimer = null;
+let voiceStarted = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -42,6 +44,11 @@ async function boot() {
 
   window.addEventListener("hashchange", route);
   route();
+  if (!voiceStarted) {
+    voiceStarted = true;
+    initVoice();
+    on("voice-state", updateCore);
+  }
   $("panic-btn").addEventListener("click", panic);
   clearInterval(statusTimer);
   statusTimer = setInterval(() => refreshStatus().catch(() => {}), 5000);
@@ -105,6 +112,8 @@ function updateCore() {
   const phases = [...state.running.values()].map((t) => t.phase);
   if (!state.connected || (state.status && !state.status.online)) mode = "offline";
   if (phases.length) mode = phases.some((p) => p === "tool") ? "working" : "thinking";
+  if (voice.state === "listening") mode = "listening";
+  if (voice.state === "speaking") mode = "speaking";
   if (state.approvals.length) mode = "alert";
   core.className = `core core-sm ${mode}`;
   emit("core", mode);

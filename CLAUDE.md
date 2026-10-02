@@ -10,15 +10,21 @@ fases**, sempre funcional, segura e modular. O usuário quer aprender: explique 
 brevemente e aponte onde estudar (`docs/APRENDIZADO.md`).
 
 ## Estado atual
+- **Plataforma-alvo: somente Windows 11** (decisão do usuário). Repositório pessoal/privado.
 - **Fase 1 concluída** (núcleo, memória, segurança, ferramentas, API, interface HUD, testes).
-- **Próxima: Fase 2 — voz** (ver `docs/ROADMAP.md`).
+- **Fase 2 concluída** (voz no navegador, palmas, respostas faladas, iniciar com o Windows).
+- **Próxima: Fase 3 — inteligência ampliada** (planejador multiagente, memória semântica,
+  projetos) — confirmar prioridade com o usuário (ver `docs/ROADMAP.md`).
+- A conta da Anthropic do usuário estava **sem créditos** em 2026-10-02; a integração real
+  com a API ainda não foi exercitada de ponta a ponta (só com provedor simulado e testes).
 
 ## Comandos
 ```bash
 pip install -e ".[dev]"      # instalar (venv recomendado)
 pytest -q                    # testes (devem passar sempre)
 ruff check src tests && ruff format src tests
-sexta serve | sexta doctor | sexta token
+node --test tests/js/*.test.mjs   # testes JS (o pytest já chama se houver Node)
+sexta serve | open | stop | autostart on|off|status | token | doctor
 ```
 
 ## Convenções
@@ -41,6 +47,11 @@ sexta serve | sexta doctor | sexta token
 5. Lista de ferramentas em ordem estável (faz parte do prefixo em cache).
 6. Interface: nunca usar `innerHTML` com dados não escapados; use `h()`/`add()`/`fill()` de
    `web/js/ui.js` (o `Element.append` nativo transforma arrays/null em texto).
+7. **Voz:** ações críticas nunca são aprovadas por voz (só clique). Palmas são processadas
+   localmente. Preferências de voz ficam no `localStorage` de cada janela (a janela dedicada
+   tem perfil próprio); padrão "texto" em abas comuns, "ambos" na janela aberta com `?voz=1`.
+8. Nunca gravar chaves/tokens em arquivos versionados (o usuário já colou uma chave no chat:
+   ela vive só no `.env` local, que está no `.gitignore`).
 
 ## Integração com a API do Claude (estado em 2026-10)
 - Modelos: `claude-haiku-4-5` (rápido; sem `effort`/thinking), `claude-sonnet-5-5`,
@@ -53,11 +64,27 @@ sexta serve | sexta doctor | sexta token
 - O provedor desliga recursos beta rejeitados e repete; assinatura de thinking inválida →
   remove blocos de thinking e repete uma vez.
 
+## Voz e Windows (Fase 2)
+- Front: `web/js/voice/` — `speech-text.js` (ativação/controle/texto falável, puro),
+  `clap-detector.js` (puro) + `clap-worklet.js`, `voice.js` (controlador/estado/TTS).
+  `window.sextaVoice.simulateSpeech()` permite testar sem microfone.
+- Backend: `submit(channel="voz")` → contexto do turno pede resposta curta; eventos levam `channel`.
+- `winsys.py`: chave `HKCU\...\Run` (valor `SextaFeira`), `pythonw -m sexta serve --app-window
+  --headless --workdir <projeto>`, janela Chrome/Edge com `--user-data-dir=<data>/navegador` e
+  `--autoplay-policy=no-user-gesture-required`; instância única via `/api/health`;
+  `sexta stop` → `POST /api/system/shutdown`.
+- Teste e2e de palmas: Chromium com `--use-file-for-fake-audio-capture=claps.wav%noloop`.
+
 ## Armadilhas já encontradas
 - Python 3.11: `asyncio.wait_for` pode engolir cancelamento se o futuro concluir junto →
   `TaskManager` mantém flag `cancel_requested` checada pelo orquestrador.
 - `ruff format` pode juntar linhas; revise condições longas após formatar.
 - Google Fonts pode falhar offline/atrás de proxy — a UI tem fontes de fallback.
+- argparse: opção repetida no parser principal e no subparser é sobrescrita pelo default do
+  subparser → usar `default=argparse.SUPPRESS` no subparser.
+- `pythonw` não tem console (`sys.stdout is None`): logs vão para `<data>/logs/sexta.log`.
+- Reconhecimento de fala do Chrome: sessões contínuas terminam sozinhas → reiniciar no `onend`
+  com backoff; erro `audio-capture` pode ser passageiro (não bloquear de vez).
 
 ## Estrutura
 `src/sexta/{core,llm,memory,security,tools,agents,api,web}` · `tests/` · `docs/`
