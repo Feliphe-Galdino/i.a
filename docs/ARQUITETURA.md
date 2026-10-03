@@ -273,3 +273,21 @@ Playwright evita conflitos de loop (no Windows ele precisa do loop Proactor para
 e mantém o servidor responsivo; as guardas impedem que um site use a IA para atacar a rede
 local ou a própria Sexta-Feira.
 
+### ADR-020 — IA pela assinatura Claude Pro (Claude Code como provedor)
+**Contexto:** o usuário tem o plano Claude Pro e não pode pagar créditos da API à parte.
+**Decisão:** um provedor `claude-code` (`llm/claude_code.py`) que chama o CLI oficial
+`claude -p` (modo não interativo) logado na assinatura. Ele roda **sem nenhuma ferramenta
+nativa** (`--tools ""`), sem personalizações (`--safe-mode`), numa pasta vazia, e sem
+`ANTHROPIC_API_KEY` no ambiente (nunca cobra na API). As ferramentas da Sexta-Feira vão no
+prompt de sistema; o modelo pede uma com `<tool_call>{"name","input"}</tool_call>` e o
+provedor converte em blocos `tool_use` — orquestrador, executor, permissões, aprovações,
+auditoria e histórico append-only seguem idênticos. O histórico vai como transcrição (com
+imagens) a cada chamada. `auto` prefere a assinatura; custo registrado = 0; o uso do plano
+(janela de 5 h/semanal, vindo do `rate_limit_event`) aparece na interface.
+**Aprendido:** com QUALQUER ferramenta nativa ligada (ex.: WebSearch) o modelo tenta chamar as
+ferramentas da Sexta como nativas e falha em silêncio — por isso nenhuma fica ligada, e a busca
+na web usa `web_fetch` (DuckDuckGo HTML), `news_search` e o navegador. Um lembrete no fim de
+cada pedido evita que ele “diga que fez” sem emitir o bloco.
+**Custo:** uma chamada de processo por etapa (alguns segundos a mais por resposta), sem cache
+de prompt controlado por nós, e o limite de uso do plano.
+

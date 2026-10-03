@@ -24,6 +24,18 @@ function gauge(label, value) {
   return h("div", { class: `gauge ${pct >= 90 ? "bad" : pct >= 75 ? "warn" : ""}` }, root, h("span", { class: "lbl" }, label));
 }
 
+/** Barra do uso de uma janela do plano (0–100%), com o horário em que renova. */
+function planMeter(label, window) {
+  if (!window) return h("div", { class: "hint" }, `${label}: aparece depois da primeira resposta da IA.`);
+  const pct = Math.round((window.utilization || 0) * 100);
+  const resets = window.resetsAt ? new Date(window.resetsAt * 1000).toLocaleString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  return h("div", {},
+    h("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "13px" } },
+      h("span", {}, label), h("span", {}, `${pct}%${resets ? ` · renova ${resets}` : ""}`)),
+    h("div", { class: `bar ${pct >= 90 ? "bad" : pct >= 75 ? "warn" : ""}`, role: "img", "aria-label": `${label}: ${pct}% usado` },
+      h("span", { style: { width: `${pct}%` } })));
+}
+
 function card(title, span, ...body) {
   return h("section", { class: `panel ${span}` }, h("div", { class: "panel-head" }, title), h("div", { class: "panel-body" }, ...body));
 }
@@ -57,7 +69,16 @@ export function mount(root) {
           h("dt", {}, "Ligado desde"), h("dd", {}, sys.ligado_desde),
           sys.bateria ? [h("dt", {}, "Bateria"), h("dd", {}, `${sys.bateria.percentual}%${sys.bateria.carregando ? " ⚡" : ""}`)] : null)),
 
-      card("Consumo de API hoje", "span-4",
+      s.provider === "claude-code"
+        ? card("Uso do plano Claude Pro", "span-4",
+          planMeter("Limite de 5 horas", s.plan?.five_hour),
+          planMeter("Limite semanal", s.plan?.seven_day),
+          h("p", { class: "hint" }, "Assinatura: sem custo por uso. Quando o limite acaba, a IA pausa até a renovação; voz, Mundo, memória e alertas continuam."),
+          usage.by_model.length
+            ? h("dl", { class: "kv" }, usage.by_model.map((m) => [
+              h("dt", {}, m.model), h("dd", {}, `${m.requests} req · ${fmt.num(m.output_tokens)} tok`)]))
+            : h("p", { class: "empty" }, "Nenhuma chamada de IA hoje."))
+        : card("Consumo de API hoje", "span-4",
         h("div", { class: "big-number" }, fmt.usd(s.spent_today_usd)),
         h("div", { class: "hint" }, `de ${fmt.usd(s.daily_budget_usd)} de orçamento diário`),
         h("div", { class: `bar ${ratio >= 1 ? "bad" : ratio >= 0.8 ? "warn" : ""}` }, h("span", { style: { width: `${ratio * 100}%` } })),
@@ -68,7 +89,7 @@ export function mount(root) {
 
       card("Estado", "span-3",
         h("dl", { class: "kv" },
-          h("dt", {}, "Provedor"), h("dd", {}, s.online ? "Claude (online)" : "Offline"),
+          h("dt", {}, "Provedor"), h("dd", {}, s.online ? (s.provider_label || "Claude") : "Offline"),
           h("dt", {}, "Autonomia"), h("dd", {}, s.autonomy_name),
           h("dt", {}, "Tarefas ativas"), h("dd", {}, s.running_tasks.length),
           h("dt", {}, "Aprovações"), h("dd", {}, s.pending_approvals),

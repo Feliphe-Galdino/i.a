@@ -108,7 +108,9 @@ function renderChips() {
   if (!s) return;
   $("brand-sub").textContent = s.online ? "MEGABRAIN ATIVO" : "MODO OFFLINE";
   const prov = $("chip-provider");
-  prov.textContent = s.online ? "Claude" : "Offline";
+  const subscription = s.provider === "claude-code";
+  prov.textContent = !s.online ? "Offline" : subscription ? "Claude Pro" : "Claude API";
+  prov.title = s.provider_label || "Provedor de IA";
   prov.className = `chip hide-sm ${s.online ? "accent" : "warn"}`;
   const auto = $("chip-autonomy");
   auto.textContent = `Autonomia: ${s.autonomy_name}`;
@@ -116,9 +118,28 @@ function renderChips() {
   $("chip-cpu").textContent = `CPU ${Math.round(s.system.cpu_percentual)}%`;
   $("chip-ram").textContent = `RAM ${Math.round(s.system.memoria_percentual)}%`;
   const cost = $("chip-cost");
-  const ratio = s.daily_budget_usd ? s.spent_today_usd / s.daily_budget_usd : 0;
-  cost.textContent = `${fmt.usd(s.spent_today_usd)} / ${fmt.usd(s.daily_budget_usd)}`;
-  cost.className = `chip hide-xs ${ratio >= 1 ? "bad" : ratio >= 0.8 ? "warn" : ""}`;
+  if (subscription) {
+    // Assinatura: sem custo por uso; mostra quanto do limite do plano já foi usado.
+    const five = s.plan?.five_hour;
+    const pct = five ? Math.round((five.utilization || 0) * 100) : null;
+    cost.textContent = pct === null ? "Plano Pro" : `Plano ${pct}%`;
+    cost.title = planTitle(s.plan);
+    cost.className = `chip hide-xs ${s.plan?.status === "rejected" || pct >= 90 ? "bad" : pct >= 75 ? "warn" : ""}`;
+  } else {
+    const ratio = s.daily_budget_usd ? s.spent_today_usd / s.daily_budget_usd : 0;
+    cost.textContent = `${fmt.usd(s.spent_today_usd)} / ${fmt.usd(s.daily_budget_usd)}`;
+    cost.title = "Gasto de API hoje / orçamento diário";
+    cost.className = `chip hide-xs ${ratio >= 1 ? "bad" : ratio >= 0.8 ? "warn" : ""}`;
+  }
+}
+
+/** Dica do uso do plano (janela de 5 h e semanal), com horário de renovação. */
+export function planTitle(plan) {
+  if (!plan) return "Assinatura Claude Pro: sem custo por uso (consome o limite do plano)";
+  const at = (ts) => (ts ? new Date(ts * 1000).toLocaleString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "?");
+  const line = (label, w) => (w ? `${label}: ${Math.round((w.utilization || 0) * 100)}% (renova ${at(w.resetsAt)})` : null);
+  return ["Assinatura Claude Pro — sem custo por uso", line("Limite de 5 h", plan.five_hour), line("Limite semanal", plan.seven_day)]
+    .filter(Boolean).join("\n");
 }
 
 function updateCore() {

@@ -148,6 +148,18 @@ pelas mesmas guardas e confirmações — a IA não tem como pular o executor.
 - Mesclar memórias parecidas sempre exige sua escolha (frases parecidas podem dizer coisas
   opostas).
 
+## IA pela assinatura (Claude Code)
+
+- O `claude` é chamado **sem ferramentas próprias** (`--tools ""`) e com `--safe-mode`: ele não
+  lê arquivos, não roda comandos e não usa MCP. Toda ação passa pelas ferramentas da Sexta-Feira
+  e, portanto, pelas mesmas guardas, permissões, confirmações e auditoria.
+- `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` e o token da interface são removidos do ambiente do
+  processo: o login usado é sempre o da sua assinatura (sem cobrança na API).
+- Roda numa pasta vazia (`<dados>/claude-code`), então nenhum `CLAUDE.md` ou configuração de
+  projeto entra no contexto. O prompt de sistema é gravado lá em arquivo (sem segredos).
+- Conteúdo externo dentro de resultados de ferramentas tem as marcações do protocolo
+  neutralizadas, para que uma página não consiga “fechar” um resultado e se passar por outra parte.
+
 ## Início automático
 
 - Usa a chave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` do seu usuário

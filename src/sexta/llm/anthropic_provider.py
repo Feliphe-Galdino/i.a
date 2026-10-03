@@ -161,8 +161,10 @@ class AnthropicProvider:
                         continue
                 if "credit balance" in lowered:
                     raise LLMError(
-                        "Sua conta da Anthropic está sem créditos. Adicione créditos em "
-                        "console.anthropic.com → Plans & Billing e tente de novo."
+                        "Sua conta da API Anthropic está sem créditos. Para usar a assinatura Claude Pro "
+                        "sem custo extra: instale o Claude Code (PowerShell:  irm https://claude.ai/install.ps1 | iex ), "
+                        "rode  claude  uma vez para entrar, tire SEXTA_LLM_PROVIDER=api do .env (se houver) e "
+                        "reinicie com  sexta stop  e  sexta open ."
                     ) from exc
                 raise LLMError(f"A API recusou a requisição: {message}") from exc
             except anthropic.AuthenticationError as exc:

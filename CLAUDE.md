@@ -19,8 +19,10 @@ brevemente e aponte onde estudar (`docs/APRENDIZADO.md`).
   de sites (Playwright, guardas de rede).
 - **Próxima: Fase 4 — projetos e aprendizado contínuo** (ver `docs/ROADMAP.md`); confirmar
   prioridade com o usuário.
-- A conta da Anthropic do usuário estava **sem créditos** em 2026-10-02; a integração real
-  com a API ainda não foi exercitada de ponta a ponta (só com provedor simulado e testes).
+- O usuário **não pode pagar créditos da API**: a IA vem da **assinatura Claude Pro** via
+  Claude Code (`llm/claude_code.py`, provedor `claude-code`, padrão `SEXTA_LLM_PROVIDER=auto`).
+  Testado de ponta a ponta com o CLI real (salvar memória + responder). A API paga continua
+  suportada (`SEXTA_LLM_PROVIDER=api`), mas nunca deve ser escolhida automaticamente.
 
 ## Comandos
 ```bash
@@ -64,6 +66,17 @@ sexta memoria instalar | status [--linhas N] | chave | token | doctor
     antes de clicar. Testes liberam hosts locais só via `allow_hosts`.
 11. Dados de mercado/notícias sempre com **fonte e horário**; estimativas marcadas; nada é
     recomendação.
+
+## Provedor "assinatura" (Claude Code, padrão)
+- `claude -p --input-format stream-json --output-format stream-json --verbose
+  --include-partial-messages --no-session-persistence --safe-mode --tools "" --system-prompt-file F
+  --model M [--effort E] [--fallback-model …]`, cwd `<dados>/claude-code`, env sem `ANTHROPIC_API_KEY`.
+- Ferramentas no prompt; o modelo responde com `<tool_call>{"name","input"}</tool_call>` →
+  `tool_use`. **Nunca ligar ferramentas nativas** (com WebSearch ligado ele tenta chamar as da
+  Sexta como nativas). Lembrete `REMINDER` no fim da transcrição evita “disse que salvou”.
+- Custo 0 (`UsageTracker`); uso do plano em `/api/status.plan` (chip “Plano N%”).
+- Opções novas ausentes em CLIs antigos são removidas e a chamada repetida (`OPTIONAL_FLAGS`).
+- Testes: `tests/test_claude_code.py` com `FakeCLI`; o fixture `settings` fixa `llm_provider="api"`.
 
 ## Integração com a API do Claude (estado em 2026-10)
 - Modelos: `claude-haiku-4-5` (rápido; sem `effort`/thinking), `claude-sonnet-5-5`,

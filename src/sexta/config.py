@@ -16,6 +16,7 @@ import contextlib
 import secrets
 from functools import cached_property
 from pathlib import Path
+from typing import Literal
 
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +40,10 @@ class Settings(BaseSettings):
     model_fast: str = "claude-haiku-4-5"
     model_balanced: str = "claude-sonnet-5-5"
     model_deep: str = "claude-opus-5-5"
+    # De onde vem a IA: "auto" = assinatura Claude Pro/Max (via Claude Code) se o `claude`
+    # estiver instalado, senão chave da API; "assinatura"; "api" (créditos); "offline".
+    llm_provider: Literal["auto", "assinatura", "api", "offline"] = "auto"
+    claude_path: str | None = None  # caminho do executável `claude` (se não estiver no PATH)
 
     # --- Servidor ----------------------------------------------------------
     host: str = "127.0.0.1"

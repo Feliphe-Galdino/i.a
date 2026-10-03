@@ -148,15 +148,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
     sexta = app.state.sexta
     if not headless:  # em segundo plano nada é impresso (o link tem o token e iria para o log)
         print(BANNER)
-        print(f"  Sexta-Feira v{__version__}  ·  provedor: {sexta.provider.name}")
+        from .llm import PROVIDER_LABELS
+
+        print(f"  Sexta-Feira v{__version__}  ·  IA: {PROVIDER_LABELS.get(sexta.provider.name, sexta.provider.name)}")
         if sexta.provider.name == "offline":
-            print("  ⚠ Sem ANTHROPIC_API_KEY: modo offline. Para configurar:  sexta chave")
+            print("  ⚠ Sem IA: instale o Claude Code e entre com sua conta Pro (veja  sexta doctor ).")
         if settings.host not in ("127.0.0.1", "localhost", "::1"):
             print(f"  ⚠ Servidor exposto em {settings.host}. Garanta firewall e mantenha o token em segredo.")
         print(f"\n  Interface: {_url(settings)}")
         print("  (o link contém seu token de acesso — não compartilhe)\n")
     elif sexta.provider.name == "offline":
-        log.warning("Sem ANTHROPIC_API_KEY: modo offline. Configure com:  sexta chave")
+        log.warning("Sem IA (offline): instale o Claude Code e entre com sua conta Pro; veja  sexta doctor")
     log.info("Sexta-Feira v%s iniciando (provedor: %s, porta: %s)", __version__, sexta.provider.name, settings.port)
 
     if not args.no_browser:
@@ -406,6 +408,31 @@ def cmd_key(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _claude_login_status(settings: Settings) -> tuple[bool, str]:
+    """Pergunta ao Claude Code se há login da assinatura (sem chave de API no ambiente)."""
+    import subprocess
+
+    from .llm.claude_code import STRIPPED_ENV, find_claude
+
+    exe = find_claude(settings.claude_path)
+    if not exe:
+        return False, "não instalado"
+    env = {k: v for k, v in os.environ.items() if k not in STRIPPED_ENV}
+    try:
+        out = subprocess.run(  # noqa: S603
+            [exe, "auth", "status"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,
+        )
+        data = json.loads(out.stdout or "{}")
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        return False, f"não consegui verificar: {exc}"
+    return bool(data.get("loggedIn")), data.get("authMethod") or "sem login"
+
+
 def cmd_token(_args: argparse.Namespace) -> int:
     settings = Settings()
     print(settings.token)
@@ -429,12 +456,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         f"Python {sys.version.split()[0]} (>= 3.11)", sys.version_info >= (3, 11), "Instale Python 3.11 ou mais novo."
     )
     check("Windows", winsys.is_windows(), "A Sexta-Feira foi feita para o Windows 11.", required=False)
-    check(
-        f"Arquivo .env nesta pasta ({Path.cwd()})",
-        (Path.cwd() / ".env").exists(),
-        "Rode:  sexta chave   (cria o .env a partir do .env.example)",
-        required=False,
-    )
+
     try:
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE VIRTUAL TABLE t USING fts5(x)")
@@ -442,11 +464,26 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     except sqlite3.Error:
         fts = False
     check(f"SQLite {sqlite3.sqlite_version} com FTS5", fts, "Atualize o Python (o SQLite embutido não tem FTS5).")
-    check(
-        "Chave da Anthropic configurada",
-        bool(settings.api_key),
-        "Rode:  sexta chave   (cria o .env e salva a chave; modo offline até lá).",
-    )
+    from .llm import PROVIDER_LABELS, build_provider
+
+    provider = build_provider(settings).name
+    print(f"  IA em uso: {PROVIDER_LABELS.get(provider, provider)}")
+    if provider == "claude-code":
+        logged_in, detail = _claude_login_status(settings)
+        check(
+            f"Claude Code conectado à sua conta ({detail})",
+            logged_in,
+            "Abra o PowerShell, rode  claude  e entre com sua conta Claude Pro (uma vez só).",
+        )
+    elif provider == "anthropic":
+        check("Chave da API Anthropic configurada (créditos)", True)
+    else:
+        check(
+            "IA disponível",
+            False,
+            "Instale o Claude Code (PowerShell:  irm https://claude.ai/install.ps1 | iex ) e rode  claude  "
+            "uma vez para entrar com sua conta Pro. Sem custo extra além do plano.",
+        )
     try:
         settings.ensure_dirs()
         writable = True

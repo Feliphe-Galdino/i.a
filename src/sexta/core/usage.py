@@ -30,14 +30,17 @@ class UsageTracker:
         task_id: str | None = None,
         conversation_id: str | None = None,
     ) -> float:
-        spec = get_model(model)
-        cost = spec.cost(
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            cache_read_tokens=usage.cache_read_tokens,
-            cache_write_tokens=usage.cache_write_tokens,
-            web_searches=usage.web_searches,
-        )
+        if provider == "claude-code":
+            cost = 0.0  # assinatura Claude Pro/Max: sem cobrança por token (consome o limite do plano)
+        else:
+            spec = get_model(model)
+            cost = spec.cost(
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cache_read_tokens=usage.cache_read_tokens,
+                cache_write_tokens=usage.cache_write_tokens,
+                web_searches=usage.web_searches,
+            )
         self.db.execute(
             """INSERT INTO usage_log (ts, task_id, conversation_id, provider, model, input_tokens,
                    output_tokens, cache_read_tokens, cache_write_tokens, web_searches, cost_usd)

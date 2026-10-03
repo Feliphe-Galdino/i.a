@@ -31,8 +31,9 @@ multiagentes, memória semântica e automação de sites). Veja o [roadmap](docs
 
 - **Python 3.11+** — https://www.python.org/downloads/ (marque **“Add Python to PATH”**).
 - **Git** — https://git-scm.com/download/win
-- **Chave da API da Anthropic com créditos** — https://console.anthropic.com/settings/keys
-  (sem créditos a API responde *“credit balance is too low”*; adicione em **Plans & Billing**).
+- **Assinatura Claude Pro (ou Max) + Claude Code** — a IA usa o seu plano, **sem custo extra**:
+  no PowerShell, instale com `irm https://claude.ai/install.ps1 | iex` e rode `claude` **uma vez**
+  para entrar com a sua conta (depois pode fechar). Não precisa de créditos da API.
 - **Voz em português no Windows** (para ela falar em pt-BR): Configurações → Hora e idioma →
   Fala → *Adicionar vozes* → **Português (Brasil)**.
 
@@ -47,7 +48,6 @@ cd i.a
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1            # se bloquear: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 pip install -e ".[completo]"             # núcleo + voz local + memória semântica + automação de sites
-sexta chave                              # cria o .env e salva sua chave (ela não aparece na tela)
 sexta voz instalar                       # baixa os modelos de voz (~500 MB, uma vez)
 sexta memoria instalar                   # baixa o modelo de busca por significado (~220 MB, uma vez)
 sexta doctor                             # verifica se está tudo certo
@@ -85,7 +85,7 @@ sozinha? `sexta autostart on --janela`.
 | `sexta voz instalar` / `dispositivos` / `testar` | Voz local: modelos, microfones, teste |
 | `sexta memoria instalar` | Modelo da busca por significado + indexação das memórias |
 | `sexta status` | Diz se o servidor está rodando e mostra as últimas linhas do log (e falhas graves) |
-| `sexta chave` | Cria o `.env` (se não existir) e salva/troca sua chave da Anthropic |
+| `sexta chave` | Opcional: salva uma chave da API (créditos) no `.env` — só se um dia quiser usar a API paga |
 | `sexta token` | Mostra o token de acesso (a “senha” da interface) |
 | `sexta doctor` | Diagnóstico da instalação |
 
@@ -126,7 +126,9 @@ recomendação de investimento.
 
 | Variável | Padrão | Para quê |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Chave da API (sem ela: modo offline) |
+| `SEXTA_LLM_PROVIDER` | `auto` | De onde vem a IA: `auto` (assinatura via Claude Code; sem ele, chave da API), `assinatura`, `api` ou `offline` |
+| `SEXTA_CLAUDE_PATH` | — | Caminho do `claude` se ele não estiver no PATH |
+| `ANTHROPIC_API_KEY` | — | Opcional: chave da API paga (só usada sem o Claude Code ou com `SEXTA_LLM_PROVIDER=api`) |
 | `SEXTA_PORT` | `8765` | Porta do servidor local |
 | `SEXTA_DATA_DIR` | `%USERPROFILE%\.sexta-feira` | Banco, token, logs, lixeira, modelos e perfis de navegador |
 | `SEXTA_WORKSPACE_DIR` | `%USERPROFILE%\SextaFeira` | Pasta de trabalho livre da assistente |
@@ -140,18 +142,27 @@ orçamento, modelos, pastas) mudam pela interface.
 
 ## Custos
 
-Preço por milhão de tokens (entrada/saída): Haiku 4.5 US$ 1/5 · Sonnet 5.5 US$ 2/10 ·
-Opus 5.5 US$ 4/20 · busca na web US$ 0,01. Voz local, memória semântica e as fontes de
-dados (notícias, clima, cotações, Banco Central) são **gratuitas**. Subagentes e resumos
-entram no orçamento do dia; o painel mostra o gasto e o roteador respeita o limite.
+**Com a assinatura (padrão): nenhum custo extra.** A Sexta-Feira usa o Claude Code logado no
+seu plano Pro — cada resposta consome um pouco do **limite de uso do plano** (janela de 5 horas
+e limite semanal, os mesmos do claude.ai). O topo da tela mostra quanto já foi usado
+(“Plano 25%”) e o Painel mostra quando renova. Se o limite acabar, a IA pausa até renovar;
+voz, Mundo, memória e alertas continuam funcionando.
+
+Dicas para render mais: prefira `/rapido` em perguntas simples; resumos automáticos e
+subagentes também consomem o plano (dá para desligar os resumos em Configurações).
+
+Voz local, memória semântica e as fontes de dados (notícias, clima, cotações, Banco Central)
+são **gratuitas**. A API paga (créditos) só é usada se você configurar `SEXTA_LLM_PROVIDER=api`.
 
 ## Solução de problemas
 
 | Sintoma | Solução |
 |---|---|
 | “Sem conexão com o servidor” / *Failed to fetch* | O servidor parou: rode `sexta status` para ver o motivo no fim do log e `sexta open` para ligar de novo. Para acompanhar ao vivo: `sexta stop` e depois `sexta serve` (deixe o terminal aberto) |
-| `.env` não existe | `sexta chave` cria a partir do `.env.example` e grava a chave |
-| “Sua conta está sem créditos” | Adicione créditos em console.anthropic.com → Plans & Billing |
+| “O Claude Code não está conectado à sua conta” | Abra o PowerShell, rode `claude`, entre com sua conta Pro e feche; depois `sexta stop` e `sexta open` |
+| “Claude Code não encontrado” | Instale: `irm https://claude.ai/install.ps1 \| iex`; feche e abra o PowerShell; `sexta doctor` deve mostrar “IA em uso: Claude Pro (assinatura)” |
+| “Você atingiu o limite de uso do seu plano” | Espere a renovação (o horário aparece na mensagem e no Painel) |
+| “Sua conta está sem créditos” | Você está no modo API: tire `SEXTA_LLM_PROVIDER=api` do `.env` para voltar à assinatura |
 | Não reage às palmas | Configurações → Voz: veja o medidor ao bater palmas; aumente a sensibilidade ou troque o microfone |
 | “Voz local indisponível” | `sexta voz instalar` (precisa de internet uma vez) e `sexta voz testar` |
 | Fala com sotaque/inglês | Instale a voz **Português (Brasil)** no Windows e escolha-a em Configurações → Voz |

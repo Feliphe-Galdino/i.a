@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from ..container import Sexta
 from ..intel.feeds import CATEGORY_LABELS
+from ..llm import PROVIDER_LABELS
 from ..llm.catalog import MODELS, Tier
 from ..security.permissions import AUTONOMY_LEVELS, CAPABILITIES
 from ..tools.system_tools import system_snapshot
@@ -29,6 +30,8 @@ async def status(sexta: Sexta = Depends(get_sexta)) -> dict[str, Any]:
     spent = sexta.usage.spent_today()
     return {
         "provider": sexta.provider.name,
+        "provider_label": PROVIDER_LABELS.get(sexta.provider.name, sexta.provider.name),
+        "plan": sexta.provider.plan_usage() if hasattr(sexta.provider, "plan_usage") else None,
         "online": sexta.provider.name != "offline",
         "running_tasks": sexta.tasks.running_ids(),
         "pending_approvals": len(sexta.approvals.pending()),
