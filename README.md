@@ -47,8 +47,7 @@ cd i.a
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1            # se bloquear: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 pip install -e ".[completo]"             # núcleo + voz local + memória semântica + automação de sites
-copy .env.example .env
-notepad .env                             # cole sua chave em ANTHROPIC_API_KEY= e salve
+sexta chave                              # cria o .env e salva sua chave (ela não aparece na tela)
 sexta voz instalar                       # baixa os modelos de voz (~500 MB, uma vez)
 sexta memoria instalar                   # baixa o modelo de busca por significado (~220 MB, uma vez)
 sexta doctor                             # verifica se está tudo certo
@@ -85,6 +84,8 @@ sozinha? `sexta autostart on --janela`.
 | `sexta autostart on` / `off` / `status` | Iniciar com o Windows (`--janela` abre a interface também) |
 | `sexta voz instalar` / `dispositivos` / `testar` | Voz local: modelos, microfones, teste |
 | `sexta memoria instalar` | Modelo da busca por significado + indexação das memórias |
+| `sexta status` | Diz se o servidor está rodando e mostra as últimas linhas do log (e falhas graves) |
+| `sexta chave` | Cria o `.env` (se não existir) e salva/troca sua chave da Anthropic |
 | `sexta token` | Mostra o token de acesso (a “senha” da interface) |
 | `sexta doctor` | Diagnóstico da instalação |
 
@@ -148,6 +149,8 @@ entram no orçamento do dia; o painel mostra o gasto e o roteador respeita o lim
 
 | Sintoma | Solução |
 |---|---|
+| “Sem conexão com o servidor” / *Failed to fetch* | O servidor parou: rode `sexta status` para ver o motivo no fim do log e `sexta open` para ligar de novo. Para acompanhar ao vivo: `sexta stop` e depois `sexta serve` (deixe o terminal aberto) |
+| `.env` não existe | `sexta chave` cria a partir do `.env.example` e grava a chave |
 | “Sua conta está sem créditos” | Adicione créditos em console.anthropic.com → Plans & Billing |
 | Não reage às palmas | Configurações → Voz: veja o medidor ao bater palmas; aumente a sensibilidade ou troque o microfone |
 | “Voz local indisponível” | `sexta voz instalar` (precisa de internet uma vez) e `sexta voz testar` |

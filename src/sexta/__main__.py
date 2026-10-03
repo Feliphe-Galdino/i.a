@@ -9,6 +9,8 @@ sexta voz instalar       baixa os modelos de voz (ativação + transcrição)
 sexta voz dispositivos   lista os microfones
 sexta voz testar         grava 5 s, transcreve e repete em voz alta
 sexta memoria instalar   baixa o modelo de busca por significado e indexa as memórias
+sexta status             diz se o servidor está rodando e mostra o fim do log
+sexta chave              cria o .env (se preciso) e salva sua chave da Anthropic
 sexta token              mostra o token de acesso
 sexta doctor             verifica a instalação e a configuração
 """
@@ -16,9 +18,12 @@ sexta doctor             verifica a instalação e a configuração
 from __future__ import annotations
 
 import argparse
+import faulthandler
+import getpass
 import json
 import logging
 import os
+import re
 import sqlite3
 import sys
 import threading
@@ -47,8 +52,40 @@ def _url(settings: Settings, *, with_token: bool = True, voice: bool = False) ->
     return f"{base}?token={settings.token}" + ("&voz=1#/chat" if voice else "")
 
 
+class _LogStream:
+    """Substitui stdout/stderr ausentes (pythonw): o que bibliotecas imprimirem vai para o log.
+
+    Sem isso, barras de progresso de downloads (tqdm) e avisos quebram em segundo plano.
+    """
+
+    encoding = "utf-8"
+
+    def __init__(self, logger: logging.Logger, level: int):
+        self.logger, self.level, self._buffer = logger, level, ""
+
+    def write(self, text: str) -> int:
+        self._buffer += str(text).replace("\r", "\n")
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            if line.strip():
+                self.logger.log(self.level, line.rstrip())
+        return len(text)
+
+    def flush(self) -> None:
+        if self._buffer.strip():
+            self.logger.log(self.level, self._buffer.rstrip())
+        self._buffer = ""
+
+    def isatty(self) -> bool:
+        return False
+
+
+_crash_file = None  # mantido aberto enquanto o processo vive (faulthandler escreve nele)
+
+
 def _setup_logging(settings: Settings, headless: bool) -> bool:
     """Sem console (pythonw/inicialização automática), os logs vão para um arquivo."""
+    global _crash_file
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     if headless or sys.stdout is None:
         settings.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +94,20 @@ def _setup_logging(settings: Settings, headless: bool) -> bool:
         )
         logging.basicConfig(level=logging.INFO, format=fmt, handlers=[handler], force=True)
         logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # a UI consulta o status a cada 5 s
+        output = logging.getLogger("saida")
+        if sys.stdout is None or headless:
+            sys.stdout = _LogStream(output, logging.INFO)
+        if sys.stderr is None or headless:
+            sys.stderr = _LogStream(output, logging.WARNING)
+        # Falhas nativas (ex.: driver de áudio) derrubam o processo sem traceback Python:
+        # o faulthandler grava onde aconteceu.
+        _crash_file = open(settings.logs_dir / "falhas.log", "a", encoding="utf-8")  # noqa: SIM115
+        faulthandler.enable(_crash_file)
+        crash_log = logging.getLogger("sexta")
+        sys.excepthook = lambda tp, value, tb: crash_log.critical("Erro não tratado", exc_info=(tp, value, tb))
+        threading.excepthook = lambda a: crash_log.error(
+            "Erro na thread %s", a.thread.name if a.thread else "?", exc_info=(a.exc_type, a.exc_value, a.exc_traceback)
+        )
         return True
     logging.basicConfig(level=logging.INFO, format=fmt)
     return False
@@ -95,14 +146,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     app = create_app(settings)
     sexta = app.state.sexta
-    print(BANNER)
-    print(f"  Sexta-Feira v{__version__}  ·  provedor: {sexta.provider.name}")
-    if sexta.provider.name == "offline":
-        print("  ⚠ Sem ANTHROPIC_API_KEY: rodando em modo offline (veja o README).")
-    if settings.host not in ("127.0.0.1", "localhost", "::1"):
-        print(f"  ⚠ Servidor exposto em {settings.host}. Garanta firewall e mantenha o token em segredo.")
-    print(f"\n  Interface: {_url(settings)}")
-    print("  (o link contém seu token de acesso — não compartilhe)\n")
+    if not headless:  # em segundo plano nada é impresso (o link tem o token e iria para o log)
+        print(BANNER)
+        print(f"  Sexta-Feira v{__version__}  ·  provedor: {sexta.provider.name}")
+        if sexta.provider.name == "offline":
+            print("  ⚠ Sem ANTHROPIC_API_KEY: modo offline. Para configurar:  sexta chave")
+        if settings.host not in ("127.0.0.1", "localhost", "::1"):
+            print(f"  ⚠ Servidor exposto em {settings.host}. Garanta firewall e mantenha o token em segredo.")
+        print(f"\n  Interface: {_url(settings)}")
+        print("  (o link contém seu token de acesso — não compartilhe)\n")
+    elif sexta.provider.name == "offline":
+        log.warning("Sem ANTHROPIC_API_KEY: modo offline. Configure com:  sexta chave")
     log.info("Sexta-Feira v%s iniciando (provedor: %s, porta: %s)", __version__, sexta.provider.name, settings.port)
 
     if not args.no_browser:
@@ -115,9 +169,19 @@ def cmd_serve(args: argparse.Namespace) -> int:
         log_level="info" if headless else "warning",
         log_config=None if headless else uvicorn.config.LOGGING_CONFIG,
     )
+    if headless:
+        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # a UI consulta o status a cada 5 s
     server = uvicorn.Server(config)
     app.state.server = server
-    server.run()
+    try:
+        server.run()
+    except BaseException:
+        log.exception("O servidor parou por um erro")
+        raise
+    if not server.started:
+        log.error("O servidor não conseguiu iniciar (porta %s ocupada ou falha na inicialização).", settings.port)
+        return 1
+    log.info("Servidor encerrado.")
     return 0
 
 
@@ -276,6 +340,72 @@ def cmd_memory(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _tail(path: Path, lines: int) -> list[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+    except OSError:
+        return []
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """Mostra se o servidor responde e as últimas linhas do log (para diagnosticar quedas)."""
+    settings = Settings()
+    running = winsys.instance_running(settings.port, timeout=3.0)
+    if running:
+        print(f"✔ A Sexta-Feira está rodando em {_url(settings, with_token=False)}")
+    else:
+        print(f"✖ A Sexta-Feira NÃO está rodando (porta {settings.port}). Para ligar: sexta open")
+    log_file = settings.logs_dir / "sexta.log"
+    lines = _tail(log_file, args.linhas)
+    if lines:
+        print(f"\nÚltimas {len(lines)} linhas de {log_file}:\n")
+        print("\n".join(lines))
+    else:
+        print(f"\n(sem log em {log_file} — o log é criado quando ela roda em segundo plano)")
+    crashes = _tail(settings.logs_dir / "falhas.log", 40)
+    if crashes:
+        print(f"\nFalhas graves registradas ({settings.logs_dir / 'falhas.log'}):\n")
+        print("\n".join(crashes))
+    return 0 if running else 1
+
+
+KEY_RE = re.compile(r"^sk-ant-[A-Za-z0-9_\-]{20,}$")
+
+
+def write_env_key(env_path: Path, key: str) -> None:
+    """Cria o .env (a partir do .env.example) se preciso e grava ANTHROPIC_API_KEY."""
+    if env_path.exists():
+        text = env_path.read_text(encoding="utf-8")
+    else:
+        example = env_path.with_name(".env.example")
+        text = example.read_text(encoding="utf-8") if example.exists() else ""
+    line = f"ANTHROPIC_API_KEY={key}"
+    if re.search(r"(?m)^\s*#?\s*ANTHROPIC_API_KEY\s*=.*$", text):
+        text = re.sub(r"(?m)^\s*#?\s*ANTHROPIC_API_KEY\s*=.*$", lambda _m: line, text, count=1)
+    else:
+        text = text.rstrip("\n") + ("\n" if text else "") + line + "\n"
+    env_path.write_text(text, encoding="utf-8")
+
+
+def cmd_key(_args: argparse.Namespace) -> int:
+    """Pergunta a chave sem mostrá-la na tela e grava no .env desta pasta."""
+    env_path = Path.cwd() / ".env"
+    if not (Path.cwd() / "pyproject.toml").exists():
+        print("Rode este comando dentro da pasta do projeto (onde está o pyproject.toml).")
+        return 1
+    print("Cole sua chave da Anthropic (começa com sk-ant-). Ela NÃO aparece enquanto você cola;")
+    print("depois tecle Enter. Crie/copie em: https://console.anthropic.com/settings/keys")
+    key = getpass.getpass("Chave: ").strip().strip('"').strip("'")
+    if not KEY_RE.match(key):
+        print("✖ Isso não parece uma chave da Anthropic (deve começar com sk-ant-). Nada foi alterado.")
+        return 1
+    write_env_key(env_path, key)
+    print(f"✔ Chave salva em {env_path} (esse arquivo nunca vai para o GitHub).")
+    if winsys.instance_running(Settings().port):
+        print("  Reinicie para usar a chave nova:  sexta stop  e depois  sexta open")
+    return 0
+
+
 def cmd_token(_args: argparse.Namespace) -> int:
     settings = Settings()
     print(settings.token)
@@ -299,6 +429,12 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
         f"Python {sys.version.split()[0]} (>= 3.11)", sys.version_info >= (3, 11), "Instale Python 3.11 ou mais novo."
     )
     check("Windows", winsys.is_windows(), "A Sexta-Feira foi feita para o Windows 11.", required=False)
+    check(
+        f"Arquivo .env nesta pasta ({Path.cwd()})",
+        (Path.cwd() / ".env").exists(),
+        "Rode:  sexta chave   (cria o .env a partir do .env.example)",
+        required=False,
+    )
     try:
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE VIRTUAL TABLE t USING fts5(x)")
@@ -309,7 +445,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     check(
         "Chave da Anthropic configurada",
         bool(settings.api_key),
-        "Preencha ANTHROPIC_API_KEY no arquivo .env (modo offline até lá).",
+        "Rode:  sexta chave   (cria o .env e salva a chave; modo offline até lá).",
     )
     try:
         settings.ensure_dirs()
@@ -397,6 +533,10 @@ def build_parser() -> argparse.ArgumentParser:
     mem = sub.add_parser("memoria", help="memória semântica (busca por significado)")
     mem.add_argument("acao", choices=["instalar"])
     mem.set_defaults(func=cmd_memory)
+    st = sub.add_parser("status", help="servidor rodando? + últimas linhas do log")
+    st.add_argument("--linhas", type=int, default=40, help="quantas linhas do log mostrar")
+    st.set_defaults(func=cmd_status)
+    sub.add_parser("chave", help="salva sua chave da Anthropic no .env").set_defaults(func=cmd_key)
     sub.add_parser("token", help="mostra o token de acesso").set_defaults(func=cmd_token)
     sub.add_parser("doctor", help="verifica a instalação").set_defaults(func=cmd_doctor)
     return parser

@@ -40,10 +40,18 @@ export class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
+export const OFFLINE_MESSAGE = "Sem conexão com o servidor da Sexta-Feira. Ele pode ter sido fechado: rode  sexta open  no PowerShell (e  sexta status  para ver o motivo).";
+
 export async function api(path, { method = "GET", body, raw = false } = {}) {
   const headers = { Authorization: `Bearer ${token()}` };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  let res;
+  try {
+    res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  } catch {
+    // "Failed to fetch": o servidor não respondeu (desligado, reiniciando ou caiu).
+    throw new ApiError(0, OFFLINE_MESSAGE);
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try { const data = await res.json(); detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail); } catch { /* sem corpo */ }

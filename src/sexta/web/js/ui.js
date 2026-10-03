@@ -36,6 +36,8 @@ export function fill(el, ...children) { return add(clear(el), ...children); }
 
 export function toast(message, kind = "info", ms = 4200) {
   const root = document.getElementById("toasts");
+  // A mesma mensagem já está na tela? Não empilha cópias (ex.: várias requisições falhando juntas).
+  for (const existing of root.children) if (existing.textContent === String(message)) return;
   const el = h("div", { class: `toast ${kind}` }, message);
   root.append(el);
   setTimeout(() => el.remove(), ms);

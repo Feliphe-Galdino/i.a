@@ -29,7 +29,7 @@ pytest -q                    # testes (devem passar sempre)
 ruff check src tests && ruff format src tests
 node --test tests/js/*.test.mjs   # testes JS (o pytest já chama se houver Node)
 sexta serve | open | stop | autostart on|off|status [--janela] | voz instalar|dispositivos|testar
-sexta memoria instalar | token | doctor
+sexta memoria instalar | status [--linhas N] | chave | token | doctor
 ```
 
 ## Convenções
@@ -115,6 +115,9 @@ sexta memoria instalar | token | doctor
   último pregão anterior (`_previous_close`).
 - Ambiente de nuvem do Claude Code: a política de rede bloqueia as fontes externas e os
   downloads de modelos (403 no proxy) → testar com mocks; `pkill -f` pode matar o próprio shell.
+- Em segundo plano (`--headless`/pythonw) stdout/stderr são redirecionados para o log
+  (`_LogStream`: tqdm de downloads quebrava com `sys.stderr = None`); falhas nativas vão para
+  `<dados>/logs/falhas.log` (faulthandler). Nunca imprimir o link com token em modo headless.
 - Playwright no Windows precisa do loop Proactor (subprocessos) — garantido na thread do
   navegador.
 

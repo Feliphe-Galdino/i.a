@@ -1,6 +1,6 @@
 // Inicialização da interface: acesso, rotas, status em tempo real e eventos globais.
 
-import { api, live, captureTokenFromUrl, getToken, setToken, clearToken } from "./api.js";
+import { api, live, captureTokenFromUrl, getToken, setToken, clearToken, OFFLINE_MESSAGE } from "./api.js";
 import * as approvals from "./approvals.js";
 import { emit, on, state } from "./state.js";
 import { clear, fmt, toast } from "./ui.js";
@@ -35,9 +35,23 @@ async function boot() {
   $("login").classList.add("hidden");
   $("app").classList.remove("hidden");
 
+  let wasConnected = false;
+  let lostAt = 0;
   live.onStatus((connected, code) => {
     state.connected = connected;
     if (code === 4401) { clearToken(); location.reload(); }
+    if (!connected && wasConnected && !lostAt) {
+      lostAt = Date.now();
+      setTimeout(() => { if (!state.connected) toast(OFFLINE_MESSAGE, "bad", 15000); }, 4000);
+    }
+    if (connected && lostAt) {
+      // O servidor voltou: recarrega a tela atual e o status.
+      lostAt = 0;
+      toast("Conexão restabelecida.", "good", 3000);
+      refreshStatus().catch(() => {});
+      route();
+    }
+    wasConnected = wasConnected || connected;
     renderChips();
   });
   live.on(handleEvent);
